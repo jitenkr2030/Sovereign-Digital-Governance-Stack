@@ -1,0 +1,155 @@
+# Prometheus Alerting Rules for CSIC Reporting Service
+# These rules define alerting conditions for the regulatory reporting module.
+
+groups:
+  # Service Health Alerts
+  - name: reporting-service-health
+    rules:
+      - alert: ReportingServiceDown
+        expr: up{job="csic-reporting-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: reporting
+        annotations:
+          summary: "CSIC Reporting Service is down"
+          description: "The reporting service has been unavailable for more than 1 minute."
+
+      - alert: ReportingServiceHighErrorRate
+        expr: rate(http_requests_total{job="csic-reporting-service",status=~"5.."}[5m]) / rate(http_requests_total{job="csic-reporting-service"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+        annotations:
+          summary: "High error rate in reporting service"
+          description: "More than 5% of HTTP requests are returning 5xx errors."
+
+  # Report Generation Alerts
+  - name: reporting-generation
+    rules:
+      - alert: ReportGenerationFailures
+        expr: increase(report_generation_failures_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+        annotations:
+          summary: "High report generation failure rate"
+          description: "More than 5 report generation failures in the last hour."
+
+      - alert: ReportGenerationStuck
+        expr: count(report_generation_duration_seconds > 300) > 0
+        for: 10m
+        labels:
+          severity: critical
+          service: reporting
+        annotations:
+          summary: "Report generation is taking too long"
+          description: "Some reports have been processing for more than 5 minutes."
+
+      - alert: ReportQueueBacklog
+        expr: report_queue_pending > 100
+        for: 15m
+        labels:
+          severity: warning
+          service: reporting
+        annotations:
+          summary: "Report queue backlog detected"
+          description: "More than 100 reports are waiting in the queue."
+
+  # Export Alerts
+  - name: reporting-exports
+    rules:
+      - alert: ExportFailures
+        expr: increase(export_failures_total[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+        annotations:
+          summary: "High export failure rate"
+          description: "More than 3 export failures in the last hour."
+
+      - alert: ExportDownloadLimitReached
+        expr: increase(export_downloads_total[1h]) > 100
+        for: 5m
+        labels:
+          severity: info
+          service: reporting
+        annotations:
+          summary: "High export download activity"
+          description: "More than 100 exports were downloaded in the last hour."
+
+  # Scheduler Alerts
+  - name: reporting-scheduler
+    rules:
+      - alert: ScheduledReportMissed
+        expr: increase(scheduled_report_missed_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+        annotations:
+          summary: "Scheduled reports were missed"
+          description: "Some scheduled reports were not generated on time."
+
+      - alert: SchedulerNotRunning
+        expr: scheduler_running == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: reporting
+        annotations:
+          summary: "Report scheduler is not running"
+          description: "The automated report scheduler has stopped."
+
+  # Database Health Alerts
+  - name: reporting-database
+    rules:
+      - alert: ReportingDatabaseDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: reporting
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "The reporting database is not responding."
+
+      - alert: ReportingDatabaseConnectionsHigh
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+          component: database
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection usage is above 80%."
+
+  # Cache Health Alerts
+  - name: reporting-cache
+    rules:
+      - alert: ReportingCacheDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: reporting
+          component: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "The reporting cache is not responding."
+
+      - alert: ReportingCacheMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: reporting
+          component: cache
+        annotations:
+          summary: "Redis cache memory usage high"
+          description: "Cache memory usage is above 80%."

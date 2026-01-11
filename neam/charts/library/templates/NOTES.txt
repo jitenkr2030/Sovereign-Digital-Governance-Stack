@@ -1,0 +1,33 @@
+Thank you for installing the NEAM Platform Helm Library Chart.
+
+This library chart provides reusable Kubernetes resource templates for all NEAM Platform microservices.
+
+To use this library in your own charts, add it as a dependency in your Chart.yaml:
+
+  dependencies:
+    - name: library
+      version: "1.0.0"
+      repository: "file://../library"
+
+Then use the provided templates in your chart's templates directory:
+
+  {{- include "library.deployment" . -}}
+  {{- include "library.service" . -}}
+  {{- include "library.ingress" . -}}
+  {{- include "library.configmap" . -}}
+  {{- include "library.serviceAccount" . -}}
+  {{- include "library.horizontalPodAutoscaler" . -}}
+  {{- include "library.podDisruptionBudget" . -}}
+  {{- include "library.persistentVolumeClaim" . -}}
+
+For detailed documentation, see the README.md file.
+
+For example charts that use this library, see:
+  - sensing
+  - black-economy
+  - feature-store
+  - macro
+  - intelligence
+  - policy
+  - reporting
+  - intervention

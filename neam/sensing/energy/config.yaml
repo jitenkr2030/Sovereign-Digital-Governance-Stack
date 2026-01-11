@@ -1,0 +1,141 @@
+# NEAM Energy Adapter Configuration
+# This file contains all configuration for the energy adapter service
+
+# Service Configuration
+service:
+  name: "energy-adapter"
+  host: "0.0.0.0"
+  port: 8085
+  environment: "production"
+  shutdown_timeout: 30s
+
+# ICCP/TASE.2 Protocol Configuration
+# ICCP (Inter-Control Center Protocol) is used for data exchange between control centers
+iccp:
+  enabled: true
+  sources:
+    # Example 1: Primary control center connection
+    - endpoint: "192.168.1.100:102"
+      local_tsap: "1.0.1"              # Local Transport Service Access Point
+      remote_tsap: "1.0.2"              # Remote TSAP
+      bilateral_table: "grid-exchange"  # Bilateral table identifier
+      local_ip: "10.0.0.50"            # Local IP address
+      vcc_selector: "vcc-001"           # Virtual Control Center selector
+      domain_selector: "domain-main"    # Domain selector
+    # Example 2: Secondary/backup connection
+    # - endpoint: "192.168.1.101:102"
+    #   local_tsap: "1.0.1"
+    #   remote_tsap: "1.0.3"
+    #   bilateral_table: "grid-exchange-backup"
+  points_of_interest:
+    - "Frequency"      # Grid frequency (Hz)
+    - "Voltage"        # Voltage measurements (kV)
+    - "Current"        # Current measurements (A)
+    - "Power"          # Real power (MW)
+    - "Reactive"       # Reactive power (MVAr)
+  timeout: 30s
+  retry_interval: 5s
+  keep_alive: 10s
+
+# IEC 61850/MMS Protocol Configuration
+# IEC 61850 is used for substation automation and protection
+iec61850:
+  enabled: true
+  sources:
+    # Example 1: Primary substation IED
+    - endpoint: "192.168.10.10"
+      port: 102
+      ied_name: "Substation-Main-001"
+      ap_title: "1.3.9999.13"          # Application Process Title
+      ae_qualifier: 12                  # Application Entity Qualifier
+      report_cb_name: "urcb01"          # Unbuffered Report Control Block name
+      rcb_enabled: true                 # Enable reporting
+    # Example 2: Secondary substation IED
+    # - endpoint: "192.168.10.11"
+    #   port: 102
+    #   ied_name: "Substation-Main-002"
+    #   ap_title: "1.3.9999.14"
+    #   ae_qualifier: 13
+  points_of_interest:
+    # MMXU - Measurement Unit (voltage, current, power)
+    - "MMXU1.Vol"       # Phase voltage
+    - "MMXU1.A"         # Phase current
+    - "MMXU1.W"         # Active power
+    - "MMXU1.VAr"       # Reactive power
+    - "MMXU1.Hz"        # Frequency
+    # XCBR - Circuit Breaker
+    - "XCBR1.Pos"       # Breaker position
+    # CSWI - Switch Controller
+    - "CSWI1.Pos"       # Switch position
+    # PTOC - Protection (overcurrent protection)
+    - "PTOC1.Str"       # Start value
+    - "PTOC1.Op"        # Operation
+  timeout: 30s
+  retry_interval: 5s
+  keep_alive: 10s
+
+# Kafka Output Configuration
+# Kafka is used for publishing processed telemetry data
+kafka:
+  brokers: "kafka-cluster:9092"
+  output_topic: "energy.telemetry"
+  dlq_topic: "energy.dlq"
+  version: "2.8.0"
+  max_open_requests: 100
+  dial_timeout: 10s
+  write_timeout: 30s
+
+# Session Management
+# Configuration for managing persistent protocol sessions
+session:
+  max_retries: 10                    # Maximum reconnection attempts
+  initial_delay: 1s                  # Initial backoff delay
+  max_delay: 60s                     # Maximum backoff delay
+  multiplier: 2.0                    # Backoff multiplier
+  health_check_interval: 30s         # Session health check interval
+  reconnect_wait: 5s                 # Wait before reconnect attempt
+
+# Signal Processing Configuration
+# Filtering and validation settings for telemetry data
+filtering:
+  # Deadband filter: Ignore changes below this percentage
+  # Set to 0.1 (0.1%) for typical grid measurements
+  deadband_percent: 0.1
+
+  # Spike detection: Flag values exceeding this deviation
+  # From sliding window average
+  spike_threshold: 20.0
+
+  # Number of samples in sliding window for spike detection
+  spike_window_size: 5
+
+  # Maximum allowed rate of change (% per second)
+  # Prevents unrealistic data spikes
+  rate_of_change_limit: 5.0
+
+  # Only accept data with these quality codes
+  quality_filter:
+    - "Good"
+    - "Questionable"  # Include questionable data for analysis
+
+  # Minimum time between reports for same point
+  min_reporting_interval: 100ms
+
+  # Value range validation
+  max_value: 1000000.0
+  min_value: -1000000.0
+
+# Logging Configuration
+logging:
+  level: "info"                      # debug, info, warn, error
+  format: "json"                     # json or console
+  output_path: "/var/log/neam"
+  json_format: true
+
+# Monitoring Configuration
+# Prometheus metrics and health endpoints
+monitoring:
+  enabled: true
+  port: 9091
+  path: "/metrics"
+  health_path: "/health"

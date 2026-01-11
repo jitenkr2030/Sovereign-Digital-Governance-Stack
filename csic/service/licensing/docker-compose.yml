@@ -1,0 +1,376 @@
+version: '3.8'
+
+# CSIC Licensing Service Docker Compose Configuration
+# This configuration provides a complete local development environment
+# with PostgreSQL, Redis, and all necessary infrastructure services.
+
+services:
+  # PostgreSQL Database for Licensing Data
+  licensing-db:
+    image: postgres:15-alpine
+    container_name: csic-licensing-db
+    hostname: licensing-db
+    environment:
+      POSTGRES_USER: csic_admin
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: csic_licensing
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - licensing_db_data:/var/lib/postgresql/data/pgdata
+      - ./internal/db/migrations:/migrations:ro
+      - ./config/init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csic_admin -d csic_licensing"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    labels:
+      - "com.csic.service=licensing-db"
+      - "com.csic.component=database"
+
+  # Redis Cache for Performance Optimization
+  licensing-cache:
+    image: redis:7-alpine
+    container_name: csic-licensing-cache
+    hostname: licensing-cache
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - licensing_cache_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512MB
+        reservations:
+          memory: 256MB
+    labels:
+      - "com.csic.service=licensing-cache"
+      - "com.csic.component=cache"
+
+  # Apache Kafka for Event Streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-kafka
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_MESSAGE_MAX_BYTES: 104857600
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=kafka"
+      - "com.csic.component=message-queue"
+
+  # Apache Zookeeper for Kafka Coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-zookeeper
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=zookeeper"
+      - "com.csic.component=coordination"
+
+  # Licensing Service Application
+  licensing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-licensing-service
+    hostname: licensing-service
+    depends_on:
+      licensing-db:
+        condition: service_healthy
+      licensing-cache:
+        condition: service_healthy
+    environment:
+      # Database Configuration
+      DB_HOST: licensing-db
+      DB_PORT: 5432
+      DB_USER: csic_admin
+      DB_PASSWORD: secure_password
+      DB_NAME: csic_licensing
+      DB_SSLMODE: require
+      # Cache Configuration
+      REDIS_HOST: licensing-cache
+      REDIS_PORT: 6379
+      # Kafka Configuration
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CONSUMER_GROUP: csic-licensing-consumer
+      # Application Configuration
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8081
+      APP_MODE: release
+      APP_ENV: development
+      # Logging
+      LOG_LEVEL: debug
+      # Monitoring
+      METRICS_ENABLED: true
+      METRICS_PORT: 9091
+    ports:
+      - "8081:8081"
+      - "9091:9091"
+      - "6060:6060"
+    networks:
+      - csic-network
+    volumes:
+      - licensing_logs:/home/appuser/logs
+      - ./config.yaml:/home/appuser/config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    labels:
+      - "com.csic.service=licensing"
+      - "com.csic.component=application"
+
+  # pgAdmin for Database Management (Development Only)
+  licensing-pgadmin:
+    image: dpage/pgadmin8:latest
+    container_name: csic-licensing-pgadmin
+    hostname: licensing-pgadmin
+    depends_on:
+      - licensing-db
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@csic.local
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - licensing_pgadmin_data:/var/lib/pgadmin
+      - ./config/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5051:80"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=licensing-pgadmin"
+      - "com.csic.component=management"
+    profiles:
+      - management
+
+  # Redis Commander for Cache Management (Development Only)
+  licensing-redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: csic-licensing-redis-commander
+    hostname: licensing-redis-commander
+    depends_on:
+      - licensing-cache
+    environment:
+      REDIS_HOSTS: local:licensing-cache:6379
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin_password
+    ports:
+      - "6381:8081"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=licensing-redis-commander"
+      - "com.csic.component=management"
+    profiles:
+      - management
+
+  # Prometheus for Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: csic-prometheus
+    hostname: prometheus
+    depends_on:
+      - licensing-service
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=prometheus"
+      - "com.csic.component=monitoring"
+    profiles:
+      - monitoring
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-grafana
+    hostname: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    labels:
+      - "com.csic.service=grafana"
+      - "com.csic.component=visualization"
+    profiles:
+      - monitoring
+
+networks:
+  csic-network:
+    name: csic-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  # Database volumes
+  licensing_db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
+
+  # Cache volumes
+  licensing_cache_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/redis
+
+  # Kafka volumes
+  kafka_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/kafka
+
+  zookeeper_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/zookeeper/data
+
+  zookeeper_log:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/zookeeper/log
+
+  # Monitoring volumes
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/prometheus
+
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/grafana
+
+  # Application volumes
+  licensing_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/logs
+
+  # Management tools volumes
+  licensing_pgadmin_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/pgadmin
+
+# Secrets management for production (uncomment and configure for production)
+# secrets:
+#   db_password:
+#     file: secrets/db_password.txt
+#   redis_password:
+#     file: secrets/redis_password.txt
+#   jwt_secret:
+#     file: secrets/jwt_secret.txt

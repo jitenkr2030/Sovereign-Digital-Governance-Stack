@@ -1,0 +1,160 @@
+# API Gateway Configuration
+# All settings can be overridden by environment variables with GATEWAY_ prefix
+
+app:
+  host: "0.0.0.0"
+  port: 8080
+  environment: "production"
+  read_timeout: 30
+  write_timeout: 30
+  shutdown_timeout: 10
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "api_gateway"
+  username: "gateway_user"
+  password: "gateway_password"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 300
+
+logging:
+  level: "info"
+  output: "stdout"
+
+auth:
+  jwt_secret: "your-super-secret-jwt-key-change-in-production"
+  issuer: "api-gateway"
+  audience: "exchange-api"
+
+# Rate limiting configuration
+rate_limiting:
+  enabled: true
+  default_requests_per_minute: 100
+  default_requests_per_hour: 1000
+  policy: "sliding_window"
+
+# Circuit breaker configuration
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  recovery_threshold: 2
+  timeout_seconds: 60
+
+# Proxy configuration
+proxy:
+  connect_timeout: 5
+  read_timeout: 30
+  write_timeout: 30
+  max_idle_connections: 100
+  keep_alive_timeout: 60
+
+# Health check configuration
+health_check:
+  enabled: true
+  interval: 30
+  timeout: 5
+  unhealthy_threshold: 3
+  healthy_threshold: 1
+
+# Analytics configuration
+analytics:
+  enabled: true
+  retention_days: 90
+  sample_rate: 1.0
+
+# Default routes
+routes:
+  - name: "health"
+    path: "/health"
+    methods: ["GET"]
+    upstream_url: "http://localhost:8080"
+    timeout: 5
+    retry_count: 0
+
+  - name: "readiness"
+    path: "/ready"
+    methods: ["GET"]
+    upstream_url: "http://localhost:8080"
+    timeout: 5
+    retry_count: 0
+
+  - name: "metrics"
+    path: "/metrics"
+    methods: ["GET"]
+    upstream_url: "http://localhost:8080"
+    timeout: 5
+    retry_count: 0
+
+# Default services
+services:
+  - name: "energy-integration"
+    host: "energy-integration"
+    port: 8080
+    protocol: "http"
+    health_check:
+      path: "/health"
+      interval: 30
+      timeout: 5
+
+  - name: "transaction-monitoring"
+    host: "transaction-monitoring"
+    port: 8080
+    protocol: "http"
+    health_check:
+      path: "/health"
+      interval: 30
+      timeout: 5
+
+  - name: "oversight"
+    host: "oversight"
+    port: 8080
+    protocol: "http"
+    health_check:
+      path: "/health"
+      interval: 30
+      timeout: 5
+
+# Plugins configuration
+plugins:
+  - name: "rate-limit"
+    type: "pre"
+    config:
+      minute: 100
+      hour: 1000
+
+  - name: "auth"
+    type: "pre"
+    config:
+      auth_header: "Authorization"
+
+  - name: "logging"
+    type: "post"
+    config:
+      log_request: true
+      log_response: true
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+  port: 9090
+
+# CORS configuration
+cors:
+  enabled: true
+  allow_origins:
+    - "*"
+  allow_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "PATCH"
+    - "DELETE"
+    - "OPTIONS"
+  allow_headers:
+    - "Origin"
+    - "Content-Type"
+    - "Authorization"
+  max_age: 86400

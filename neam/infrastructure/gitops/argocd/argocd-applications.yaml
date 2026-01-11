@@ -1,0 +1,384 @@
+# GitOps Configuration with ArgoCD
+# Manages deployment of all NEAM platform components
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/part-of: argocd
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+data:
+  # ArgoCD configuration
+  url: https://argocd.neam.gov.eg
+  server.service.type: ClusterIP
+  server.log.level: info
+  server.rootpath: /argocd
+
+  # Resource tracking
+  resource.customizations: |
+    workloads:
+      tracking: ''
+      tracking conf:
+        field: metadata.annotations['neam.dev/tracking-id']
+        label: neam.dev/tracking-id
+
+  # SSO Configuration
+  dex.config: |
+    connectors:
+      - type: ldap
+        config:
+          host: ldap.neam.gov.eg:389
+          insecureNoSSL: true
+          bindDN: "cn=admin,dc=neam,dc=gov,dc=eg"
+          bindPW: "${LDAP_PASSWORD}"
+          userSearch:
+            baseDN: "ou=users,dc=neam,dc=gov,dc=eg"
+            filter: "(objectClass=person)"
+            username: uid
+            idAttr: uid
+            emailAttr: mail
+          groupSearch:
+            baseDN: "ou=groups,dc=neam,dc=gov,dc=eg"
+            filter: "(objectClass=groupOfNames)"
+            userAttr: DN
+            groupAttr: member
+            nameAttr: cn
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-secret
+  namespace: argocd
+type: Opaque
+stringData:
+  # Server secret
+  server.secretkey: "${ARGOCD_SERVER_SECRET}"
+  # Admin password (hashed)
+  admin.password: "${ARGOCD_ADMIN_PASSWORD_HASH}"
+  # Dex LDAP password
+  ldap.managerPassword: "${LDAP_PASSWORD}"
+
+---
+# ArgoCD Application for Infrastructure Layer
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neam-infrastructure
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: neam-platform
+    app.kubernetes.io/part-of: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/neam-platform/infrastructure
+              revision: HEAD
+              directories:
+                - path: kubernetes/*
+          - matrix:
+              generators:
+                - clusters:
+                    selector:
+                      matchLabels:
+                        environment: production
+                - matrix:
+                    generators:
+                      - list:
+                          elements:
+                            - component: postgres
+                            - component: timescaledb
+                            - component: clickhouse
+                            - component: redis
+                            - component: opensearch
+                            - component: minio
+  template:
+    metadata:
+      name: '{{path.basename}}-{{component}}'
+    spec:
+      project: neam-infrastructure
+      source:
+        repoURL: https://github.com/neam-platform/infrastructure
+        targetRevision: HEAD
+        path: '{{path}}/{{component}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: neam-{{component}}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      ignoreDifferences:
+        - group: ""
+          kind: ServiceAccount
+          jsonPointers:
+            - /secrets
+      revisionHistoryLimit: 5
+
+---
+# ArgoCD Project for Infrastructure
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: neam-infrastructure
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: neam-platform
+spec:
+  description: NEAM Platform Infrastructure
+  sourceRepos:
+    - https://github.com/neam-platform/infrastructure
+    - https://github.com/neam-platform/*
+    - https://charts.bitnami.com/*
+    - https://charts.deliveryhero.io/*
+    - https://charts.jetstack.io/*
+    - https://charts.open-telemetry.io/*
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: neam-*
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: PersistentVolume
+    - group: ""
+      kind: StorageClass
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: "apps"
+      kind: Deployment
+    - group: "apps"
+      kind: StatefulSet
+    - group: "apps"
+      kind: DaemonSet
+    - group: ""
+      kind: Pod
+    - group: ""
+      kind: PodDisruptionBudget
+    - group: "networking.k8s.io"
+      kind: Ingress
+    - group: "networking.k8s.io"
+      kind: NetworkPolicy
+    - group: "policy"
+      kind: PodDisruptionBudget
+    - group: "postgresql.cnpg.io"
+      kind: Cluster
+    - group: "postgresql.cnpg.io"
+      kind: Pooler
+    - group: "clickhouse.altinity.com"
+      kind: ClickHouseInstallation
+    - group: "redis-operator.k8s"
+      kind: RedisCluster
+    - group: "redis-operator.k8s"
+      kind: RedisSentinel
+    - group: "opensearch.opster.io"
+      kind: OpenSearchCluster
+    - group: "minio.min.io"
+      kind: Tenant
+
+  roles:
+    - name: application-admin
+      description: Application admin role
+      policies:
+        - p, proj:neam-infrastructure:application-admin, applications, *, neam-*, allow
+        - p, proj:neam-infrastructure:application-admin, projects, get, neam-infrastructure, allow
+      groups:
+        - neam-platform-admins
+    - name: readonly
+      description: Read-only access
+      policies:
+        - p, proj:neam-infrastructure:readonly, applications, get, neam-*, allow
+        - p, proj:neam-infrastructure:readonly, projects, get, neam-infrastructure, allow
+      groups:
+        - neam-platform-viewers
+
+---
+# ArgoCD Application for Monitoring Stack
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: neam-monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: neam-monitoring
+spec:
+  project: neam-infrastructure
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 55.5.0
+    helm:
+      releaseName: neam-monitoring
+      parameters:
+        - name: prometheus.prometheusSpec.retention
+          value: "30d"
+        - name: prometheus.prometheusSpec.storageSpec
+          value: |
+            volumeClaimTemplate:
+              spec:
+                storageClassName: nvme-ssd
+                resources:
+                  requests:
+                    storage: 200Gi
+        - name: grafana.persistence.enabled
+          value: "true"
+        - name: grafana.persistence.storageClassName
+          value: "nvme-ssd"
+        - name: grafana.persistence.size
+          value: "50Gi"
+        - name: alertmanager.alertmanagerSpec.storage
+          value: |
+            volumeClaimTemplate:
+              spec:
+                storageClassName: nvme-ssd
+                resources:
+                  requests:
+                    storage: 10Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+  ignoreDifferences:
+    - group: ""
+      kind: ConfigMap
+      jsonPointers:
+        - /data
+
+---
+# ArgoCD Application for Secrets Management
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: neam-secrets
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: neam-secrets
+spec:
+  project: neam-infrastructure
+  source:
+    chart: vault
+    repoURL: https://helm.releases.hashicorp.com
+    targetRevision: 0.26.0
+    helm:
+      releaseName: vault
+      parameters:
+        - name: server.ha.enabled
+          value: "true"
+        - name: server.ha.raft.enabled
+          value: "true"
+        - name: server.dataStorage.enabled
+          value: "true"
+        - name: server.dataStorage.size
+          value: "50Gi"
+        - name: server.dataStorage.storageClass
+          value: "nvme-ssd"
+        - name: injector.enabled
+          value: "false"
+        - name: server.affinity
+          value: |
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: vault
+                  topologyKey: kubernetes.io/hostname
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+---
+# ApplicationSet for NEAM Microservices
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neam-microservices
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: neam-microservices
+spec:
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/neam-platform/services
+              revision: HEAD
+              directories:
+                - path: services/*
+          - list:
+              elements:
+                - environment: production
+                  cluster: neam-production
+                - environment: staging
+                  cluster: neam-staging
+  template:
+    metadata:
+      name: '{{path.basename}}-{{cluster}}'
+    spec:
+      project: neam-services
+      source:
+        repoURL: https://github.com/neam-platform/services
+        targetRevision: HEAD
+        path: '{{path}}'
+        helm:
+          valueFiles:
+            - values-{{environment}}.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: neam
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+      revisionHistoryLimit: 3

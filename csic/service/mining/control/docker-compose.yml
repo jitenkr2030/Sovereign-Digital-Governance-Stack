@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mining-control:
+    build:
+      context: ./service/mining/control
+      dockerfile: Dockerfile
+    container_name: csic-mining-control
+    restart: unless-stopped
+    ports:
+      - "8082:8082"  # API port
+      - "3333:3333"  # Stratum port
+    volumes:
+      - ./service/mining/control/internal/config/config.yaml:/app/internal/config/config.yaml:ro
+      - mining_data:/var/lib/csic/mining
+      - mining_logs:/var/log/csic
+    environment:
+      - ENV=production
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - csic_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mining_data:
+    driver: local
+  mining_logs:
+    driver: local
+
+networks:
+  csic_network:
+    external: true

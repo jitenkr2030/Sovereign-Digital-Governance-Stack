@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Energy Integration Service
+  energy-integration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: energy-integration
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ENERGY_APP_HOST=0.0.0.0
+      - ENERGY_APP_PORT=8080
+      - ENERGY_APP_ENVIRONMENT=production
+      - ENERGY_DATABASE_HOST=postgres
+      - ENERGY_DATABASE_PORT=5432
+      - ENERGY_DATABASE_NAME=energy_integration
+      - ENERGY_DATABASE_USERNAME=energy_user
+      - ENERGY_DATABASE_PASSWORD=energy_password
+      - ENERGY_LOG_LEVEL=info
+    volumes:
+      - ./config.yaml:/home/appuser/config.yaml:ro
+      - ./logs:/home/appuser/logs
+      - ./data:/home/appuser/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - energy-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: energy-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=energy_integration
+      - POSTGRES_USER=energy_user
+      - POSTGRES_PASSWORD=energy_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U energy_user -d energy_integration"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - energy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: energy-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - energy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: energy-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=energy_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - energy-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+networks:
+  energy-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

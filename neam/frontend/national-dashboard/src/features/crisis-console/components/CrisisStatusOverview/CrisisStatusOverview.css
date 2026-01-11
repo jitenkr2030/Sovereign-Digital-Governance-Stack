@@ -1,0 +1,207 @@
+.crisis-status-overview {
+  overflow: hidden;
+}
+
+/* Header */
+.crisis-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  margin: calc(-1 * var(--spacing-md));
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.crisis-level-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.crisis-level-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: white;
+  border: 3px solid currentColor;
+  border-radius: 8px;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+}
+
+.crisis-level-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.crisis-level-label {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}
+
+.crisis-level-description {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: var(--spacing-xs) 0 0 0;
+}
+
+.crisis-elapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Metrics Grid */
+.crisis-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.crisis-metric-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+}
+
+.metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+}
+
+.metric-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* Response Time */
+.crisis-response-time {
+  padding: var(--spacing-md);
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: var(--spacing-md);
+}
+
+.response-time-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.response-time-value {
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+}
+
+.response-time-target {
+  display: block;
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+/* Team Info */
+.crisis-team-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: var(--spacing-md);
+}
+
+.team-member,
+.commander-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.commander-label {
+  color: var(--color-text-muted);
+}
+
+.commander-name {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* Actions */
+.crisis-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.crisis-details-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+}
+
+.crisis-details-btn:hover {
+  background: var(--color-primary-hover);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .crisis-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .crisis-overview-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .crisis-team-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+}

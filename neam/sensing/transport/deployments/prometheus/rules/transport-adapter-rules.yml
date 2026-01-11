@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: neam
+  labels:
+    app: prometheus
+data:
+  transport-adapter-rules.yml: |
+    groups:
+      - name: transport-adapter.rules
+        rules:
+          - record: transport_adapter:points_processed:rate5m
+            expr: rate(transport_adapter_points_processed_total[5m])
+
+          - record: transport_adapter:points_filtered:rate5m
+            expr: rate(transport_adapter_points_filtered_total[5m])
+
+          - record: transport_adapter:filter_ratio:5m
+            expr: |
+              rate(transport_adapter_points_filtered_total[5m])
+              /
+              rate(transport_adapter_points_processed_total[5m])
+
+          - record: transport_adapter:spikes_detected:rate5m
+            expr: rate(transport_adapter_spikes_detected_total[5m])
+
+          - record: transport_adapter:outliers_detected:rate5m
+            expr: rate(transport_adapter_outliers_detected_total[5m])
+
+          - record: transport_adapter:mqtt_connected:ratio
+            expr: |
+              sum(transport_adapter_mqtt_connected)
+              /
+              count(transport_adapter_mqtt_connected)
+
+          - record: transport_adapter:processing_latency:p95
+            expr: histogram_quantile(0.95, rate(transport_adapter_processing_latency_seconds_bucket[5m]))
+
+          - record: transport_adapter:processing_latency:p99
+            expr: histogram_quantile(0.99, rate(transport_adapter_processing_latency_seconds_bucket[5m]))
+
+          - record: transport_adapter:kafka_messages_sent:rate1m
+            expr: rate(kafka_producer_messages_sent_total{job="transport-adapter"}[1m])
+
+          - record: transport_adapter:kafka_bytes_sent:rate1m
+            expr: rate(kafka_producer_bytes_sent_total{job="transport-adapter"}[1m])
+
+          - record: transport_adapter:mqtt_messages_received:rate1m
+            expr: rate(transport_adapter_mqtt_messages_received_total[1m])
+
+          - record: transport_adapter:session_retries:rate5m
+            expr: rate(transport_adapter_session_retries_total[5m])
+
+  industrial-adapter-rules.yml: |
+    groups:
+      - name: industrial-adapter.rules
+        rules:
+          - record: industrial_adapter:points_processed:rate5m
+            expr: rate(industrial_adapter_points_processed_total[5m])
+
+          - record: industrial_adapter:points_filtered:rate5m
+            expr: rate(industrial_adapter_points_filtered_total[5m])
+
+          - record: industrial_adapter:filter_ratio:5m
+            expr: |
+              rate(industrial_adapter_points_filtered_total[5m])
+              /
+              rate(industrial_adapter_points_processed_total[5m])
+
+          - record: industrial_adapter:spikes_detected:rate5m
+            expr: rate(industrial_adapter_spikes_detected_total[5m])
+
+          - record: industrial_adapter:outliers_detected:rate5m
+            expr: rate(industrial_adapter_outliers_detected_total[5m])
+
+          - record: industrial_adapter:opcua_connected:ratio
+            expr: |
+              sum(industrial_adapter_opcua_connected)
+              /
+              count(industrial_adapter_opcua_connected)
+
+          - record: industrial_adapter:processing_latency:p95
+            expr: histogram_quantile(0.95, rate(industrial_adapter_processing_latency_seconds_bucket[5m]))
+
+          - record: industrial_adapter:processing_latency:p99
+            expr: histogram_quantile(0.99, rate(industrial_adapter_processing_latency_seconds_bucket[5m]))
+
+          - record: industrial_adapter:kafka_messages_sent:rate1m
+            expr: rate(kafka_producer_messages_sent_total{job="industrial-adapter"}[1m])
+
+          - record: industrial_adapter:kafka_bytes_sent:rate1m
+            expr: rate(kafka_producer_bytes_sent_total{job="industrial-adapter"}[1m])
+
+          - record: industrial_adapter:discovery_nodes_found:rate5m
+            expr: rate(industrial_adapter_discovery_nodes_found_total[5m])
+
+          - record: industrial_adapter:discovery_assets_found:rate5m
+            expr: rate(industrial_adapter_discovery_assets_found_total[5m])
+
+          - record: industrial_adapter:discovery_errors:rate5m
+            expr: rate(industrial_adapter_discovery_errors_total[5m])
+
+          - record: industrial_adapter:subscription_count:avg
+            expr: avg(industrial_adapter_subscription_count)
+
+  node-exporter-rules.yml: |
+    groups:
+      - name: node-exporter.rules
+        rules:
+          - record: node_cpu:cpu_usage:rate5m
+            expr: sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance)
+
+          - record: node_memory:memory_usage:ratio
+            expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+          - record: node_disk:disk_io_time:rate5m
+            expr: rate(node_disk_io_time_seconds_total[5m])
+
+          - record: node_network:network_traffic:rate5m
+            expr: sum(rate(node_network_receive_bytes_total[5m]) + rate(node_network_transmit_bytes_total[5m])) by (instance)

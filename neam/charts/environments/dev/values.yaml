@@ -1,0 +1,222 @@
+# NEAM Platform Development Environment Values
+# This file contains default values for development environment deployments
+# All settings are optimized for local development with minimal resource usage
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+    environment: development
+    version: dev
+  imagePullSecrets: []
+
+# Image configuration - use local development images
+image:
+  repository: neam-platform
+  pullPolicy: IfNotPresent
+  tag: "dev"
+  pullSecrets: []
+
+# Replica configuration - single instance for development
+replicaCount: 1
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: "neam-dev-sa"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-dev-role"
+
+# Pod configuration for development
+podAnnotations:
+  checksum/config: "dev-config"
+  prometheus.io/scrape: "false"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration - relaxed for development
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+# Environment variables for development
+env:
+  - name: LOG_LEVEL
+    value: "debug"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-dev"
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://localhost:4317"
+  - name: OTEL_METRICS_EXPORTER
+    value: "none"
+  - name: OTEL_TRACES_EXPORTER
+    value: "none"
+
+# Feature flags for development - all features enabled for testing
+featureFlags:
+  advancedAnalytics: true
+  aiPrediction: true
+  realTimeProcessing: true
+  customRules: true
+  auditLogging: true
+  debugMode: true
+  performanceMonitoring: true
+  betaFeatures: true
+
+# Resource configuration - minimal for development
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Disable autoscaling for development
+autoscaling:
+  enabled: false
+
+# Networking - no ingress for development
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: false
+
+# Disable pod disruption budgets for development
+podDisruptionBudget:
+  enabled: false
+
+# Health probes - faster for development
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Database configuration - local development databases
+database:
+  postgresql:
+    host: "localhost"
+    port: 5432
+    username: "neam_dev"
+    password: "dev_password"
+    name: "neam_dev"
+    sslMode: "disable"
+    pool:
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 5m
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+    db: 0
+    keyPrefix: "dev:"
+    pool:
+      maxIdle: 5
+      maxActive: 10
+
+# Kafka configuration - local Kafka for development
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumerGroup: "neam-dev"
+  autoOffsetReset: "earliest"
+
+# MongoDB configuration - local MongoDB for development
+mongodb:
+  host: "localhost"
+  port: 27017
+  username: "neam_dev"
+  password: "dev_password"
+  database: "neam_dev"
+  authSource: "admin"
+
+# Elasticsearch configuration - local Elasticsearch for development
+elasticsearch:
+  host: "localhost"
+  port: 9200
+  index: "neam-dev"
+  username: ""
+  password: ""
+
+# External services - development endpoints
+externalServices:
+  schemaRegistry:
+    url: "http://localhost:8081"
+  dataQualityService:
+    url: "http://localhost:8082"
+  notificationService:
+    url: "http://localhost:8083"
+
+# Vault configuration - development vault
+vault:
+  enabled: false
+  address: "http://localhost:8200"
+  role: "neam-dev"
+  authPath: "kubernetes"
+
+# CSI Secret Provider - disabled for development
+csiSecretProvider:
+  enabled: false
+  providerPath: "secrets-store.csi.k8s.io"
+
+# Storage configuration - ephemeral for development
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration - minimal for development
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+terminationGracePeriodSeconds: 30
+
+# Command override for local development
+command: []
+args: []
+
+# Volume mounts - empty for development
+volumeMounts: []
+volumes: []
+
+# Lifecycle hooks - disabled for development
+lifecycle: {}
+initContainers: []
+
+# DNS configuration - defaults
+dnsPolicy: ""
+dnsConfig: {}
+hostAliases: []
+schedulerName: ""
+priorityClassName: ""

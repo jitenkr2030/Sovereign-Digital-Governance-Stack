@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  wallet-db:
+    image: postgres:16-alpine
+    container_name: wallet-governance-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-csic_wallet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wallet_password}
+      POSTGRES_DB: ${DB_NAME:-csic_wallet}
+    volumes:
+      - wallet_db_data:/var/lib/postgresql/data
+      - ./internal/db/migrations:/docker-entrypoint-initdb.d/migrations
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-csic_wallet} -d ${DB_NAME:-csic_wallet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wallet_network
+    restart: unless-stopped
+
+  wallet-cache:
+    image: redis:7-alpine
+    container_name: wallet-governance-cache
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - wallet_cache_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - wallet_network
+    restart: unless-stopped
+
+  wallet-governance:
+    build:
+      context: .
+      dockerfile: internal/deploy/Dockerfile
+    container_name: wallet-governance-app
+    environment:
+      DB_HOST: wallet-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-csic_wallet}
+      DB_PASSWORD: ${DB_PASSWORD:-wallet_password}
+      DB_NAME: ${DB_NAME:-csic_wallet}
+      REDIS_HOST: wallet-cache
+      REDIS_PORT: 6379
+      APP_PORT: 8084
+      METRICS_PORT: 9094
+    volumes:
+      - ./internal/config/config.yaml:/app/internal/config/config.yaml:ro
+    ports:
+      - "8084:8084"
+      - "9094:9094"
+    depends_on:
+      wallet-db:
+        condition: service_healthy
+      wallet-cache:
+        condition: service_healthy
+    networks:
+      - wallet_network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: wallet-governance-prometheus
+    volumes:
+      - ./internal/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9095:9090"
+    networks:
+      - wallet_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: wallet-governance-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-wallet_admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./internal/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - wallet_network
+    restart: unless-stopped
+
+volumes:
+  wallet_db_data:
+  wallet_cache_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  wallet_network:
+    driver: bridge

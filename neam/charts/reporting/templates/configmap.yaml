@@ -1,0 +1,2 @@
+{{- include "library.configmap" . -}}
+{{- include "library.configmapFromFile" . -}}

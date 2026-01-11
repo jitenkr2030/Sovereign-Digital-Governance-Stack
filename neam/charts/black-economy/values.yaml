@@ -1,0 +1,235 @@
+# Default values for black-economy service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "black-economy"
+fullnameOverride: "neam-black-economy"
+
+# Replica configuration
+replicaCount: 3
+
+# Image configuration
+image:
+  repository: neam-platform/black-economy
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-black-economy"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-black-economy-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "def456"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-black-economy"
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector:4317"
+
+envFrom:
+  - secretRef:
+      name: black-economy-secrets
+  - configMapRef:
+      name: black-economy-config
+
+command:
+  - "/black-economy"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/black-economy
+    readOnly: true
+
+volumes:
+  - name: config
+    configMap:
+      name: black-economy-config
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "4"
+    memory: 4Gi
+  requests:
+    cpu: 1
+    memory: 1Gi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: false
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      detection:
+        model_path: /models/detection
+        threshold: 0.85
+        batch_size: 50
+      
+      cache:
+        redis_url: redis://redis:6379
+        ttl: 1h
+      
+      database:
+        url: postgresql://postgres:5432/neam
+        max_open_conns: 25
+        max_idle_conns: 5
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: black-economy
+
+nodeSelector:
+  node-type: ml-compute
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - black-economy
+        topologyKey: kubernetes.io/hostname
+
+tolerations:
+  - key: "ml-workload"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+terminationGracePeriodSeconds: 60
+
+priorityClassName: high-priority
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

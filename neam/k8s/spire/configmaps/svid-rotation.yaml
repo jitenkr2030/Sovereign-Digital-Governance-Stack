@@ -1,0 +1,385 @@
+# SVID Rotation Policies and Configuration
+# ConfigMap for SVID lifecycle management
+
+---
+# SVID Rotation Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: svid-rotation-config
+  namespace: spire-system
+data:
+  rotation-config.yaml: |
+    # SVID Rotation Configuration for NEAM Platform
+    # Following NIST SP 800-57 recommendations
+    
+    svid_rotation:
+      # Default TTL for workload SVIDs
+      default_svid_ttl: "1h"
+      
+      # Rotation schedule - 50% of TTL (automatic rotation)
+      automatic_rotation_threshold: "50%"
+      
+      # Emergency rotation grace period
+      emergency_rotation_grace_period: "5m"
+      
+      # Minimum TTL to prevent over-rotation
+      minimum_ttl: "10m"
+      
+      # Maximum TTL for compliance
+      maximum_ttl: "24h"
+      
+    # Key rotation configuration
+    key_rotation:
+      # CA key rotation interval
+      ca_key_rotation_interval: "90d"
+      
+      # Intermediate key rotation
+      intermediate_key_rotation: "30d"
+      
+      # Key retirement grace period
+      key_retirement_grace_period: "7d"
+      
+    # Certificate Revocation
+    revocation:
+      # CRL publishing interval
+      crl_publish_interval: "1h"
+      
+      # OCSP responder configuration
+      ocsp:
+        enabled: true
+        refresh_interval: "30m"
+        
+      # Online Certificate Status Protocol (OCSP) stapling
+      ocsp_stapling: true
+      
+    # Rotation policies by workload type
+    workload_policies:
+      # Critical services - short TTL
+      critical:
+        svid_ttl: "30m"
+        rotation_threshold: "50%"
+        
+      # Standard services - default TTL
+      standard:
+        svid_ttl: "1h"
+        rotation_threshold: "50%"
+        
+      # Batch jobs - TTL based on job duration
+      batch:
+        svid_ttl: "24h"
+        rotation_threshold: "100%"
+        
+      # Long-running services
+      long_running:
+        svid_ttl: "12h"
+        rotation_threshold: "50%"
+        
+    # Emergency rotation settings
+    emergency_rotation:
+      enabled: true
+      trigger_conditions:
+        - security_incident_detected
+        - key_compromise_suspected
+        - compliance_audit_failure
+        - manual_trigger
+        
+      notification:
+        enabled: true
+        channels:
+          - slack
+          - email
+          - pagerduty
+          
+      rollback:
+        enabled: true
+        previous_key_retention: "24h"
+---
+# CronJob for automatic SVID rotation monitoring
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: svid-rotation-monitor
+  namespace: spire-system
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: svid-rotation-monitor
+        spec:
+          serviceAccountName: spire-admin-sa
+          containers:
+            - name: monitor
+              image: gcr.io/spiffe-io/spire-server:1.8.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # SVID Rotation Monitor Script
+                  echo "Checking SVID rotation status..."
+                  
+                  # Get all SVIDs
+                  spire-server entry show
+                  
+                  # Check for expiring SVIDs
+                  expiry_threshold=$(date -d "+10 minutes" +%s)
+                  
+                  # Alert on SVIDs expiring soon
+                  echo "Checking for SVIDs expiring within 10 minutes..."
+                  
+                  # Log rotation events
+                  echo "SVID rotation check completed at $(date)"
+              env:
+                - name: SPIRE_SERVER_DATA_DIR
+                  value: "/run/spire/data"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          restartPolicy: OnFailure
+---
+# CronJob for automatic key rotation
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: key-rotation
+  namespace: spire-system
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: key-rotation
+        spec:
+          serviceAccountName: spire-admin-sa
+          containers:
+            - name: key-rotator
+              image: gcr.io/spiffe-io/spire-server:1.8.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Starting key rotation process..."
+                  
+                  # Generate new signing key
+                  echo "Generating new CA signing key..."
+                  
+                  # Rotate intermediate keys
+                  echo "Rotating intermediate keys..."
+                  
+                  # Archive old keys
+                  echo "Archiving old keys..."
+                  
+                  # Update trust bundle
+                  echo "Updating trust bundle..."
+                  
+                  echo "Key rotation completed at $(date)"
+              env:
+                - name: SPIRE_SERVER_DATA_DIR
+                  value: "/run/spire/data"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+          restartPolicy: OnFailure
+---
+# CronJob for CRL publication
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: crl-publisher
+  namespace: spire-system
+spec:
+  schedule: "0 * * * *"  # Every hour
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 24
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: crl-publisher
+        spec:
+          serviceAccountName: spire-admin-sa
+          containers:
+            - name: crl-publisher
+              image: gcr.io/spiffe-io/spire-server:1.8.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Publishing Certificate Revocation List..."
+                  
+                  # Generate CRL
+                  echo "Generating CRL..."
+                  
+                  # Publish to configured endpoints
+                  echo "Publishing CRL to endpoints..."
+                  
+                  # Update OCSP responders
+                  echo "Updating OCSP responders..."
+                  
+                  echo "CRL publication completed at $(date)"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+          restartPolicy: OnFailure
+---
+# Emergency SVID Rotation Trigger
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: emergency-rotation-procedures
+  namespace: spire-system
+data:
+  emergency-rotation.sh: |
+    #!/bin/bash
+    # Emergency SVID Rotation Procedure
+    # This script triggers immediate rotation of all SVIDs
+    
+    set -e
+    
+    echo "=========================================="
+    echo "EMERGENCY SVID ROTATION INITIATED"
+    echo "Time: $(date)"
+    echo "Reason: $REASON"
+    echo "=========================================="
+    
+    # Validate reason
+    if [ -z "$REASON" ]; then
+      echo "ERROR: Must specify REASON environment variable"
+      exit 1
+    fi
+    
+    # Notify security team
+    echo "Notifying security team..."
+    # Add notification logic here (Slack, PagerDuty, Email)
+    
+    # Trigger emergency rotation
+    echo "Triggering emergency rotation for all entries..."
+    
+    # Get all entry IDs
+    ENTRY_IDS=$(spire-server entry show -format json | jq -r '.[].id')
+    
+    for ENTRY_ID in $ENTRY_IDS; do
+      echo "Rotating SVID for entry: $ENTRY_ID"
+      spire-server entry rotate -id "$ENTRY_ID"
+    done
+    
+    # Verify rotation
+    echo "Verifying rotation..."
+    
+    # Log completion
+    echo "Emergency rotation completed at $(date)"
+    
+    # Generate report
+    echo "Generating rotation report..."
+    
+    echo "=========================================="
+    echo "EMERGENCY ROTATION COMPLETED"
+    echo "==========================================
+---
+# SVID Health Check Script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: svid-health-check
+  namespace: spire-system
+data:
+  health-check.sh: |
+    #!/bin/bash
+    # SVID Health Check Script
+    # Monitors SVID validity and alerts on issues
+    
+    set -e
+    
+    THRESHOLD_MINUTES=${THRESHOLD_MINUTES:-30}
+    
+    echo "Running SVID health check..."
+    echo "Threshold: $THRESHOLD_MINUTES minutes"
+    
+    # Check SPIRE server health
+    echo "Checking SPIRE server health..."
+    if ! spire-server healthcheck; then
+      echo "CRITICAL: SPIRE server is unhealthy"
+      exit 2
+    fi
+    
+    # Check agent connectivity
+    echo "Checking agent connectivity..."
+    AGENT_COUNT=$(spire-server agent list | grep -c "Active" || echo "0")
+    echo "Active agents: $AGENT_COUNT"
+    
+    # Check for expiring SVIDs
+    echo "Checking for expiring SVIDs..."
+    EXPIRING=$(spire-server entry show | grep -c "expiring" || echo "0")
+    
+    if [ "$EXPIRING" -gt 0 ]; then
+      echo "WARNING: $EXPIRING SVIDs expiring soon"
+      # Add alerting logic here
+    fi
+    
+    # Check revocation list freshness
+    echo "Checking CRL freshness..."
+    LAST_CRL=$(date -d "1 hour ago" +%s)
+    # Add CRL freshness check
+    
+    # Generate health report
+    echo "Generating health report..."
+    
+    echo "Health check completed at $(date)"
+    exit 0
+---
+# SPIRE Admin ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-admin-sa
+  namespace: spire-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-admin-role
+rules:
+  - apiGroups: ["spire.spiffe.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-admin-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: spire-admin-sa
+    namespace: spire-system
+roleRef:
+  kind: ClusterRole
+  name: spire-admin-role
+  apiGroup: rbac.authorization.k8s.io

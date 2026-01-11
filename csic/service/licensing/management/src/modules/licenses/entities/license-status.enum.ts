@@ -1,0 +1,7 @@
+export enum LicenseStatus {
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  EXPIRED = 'EXPIRED',
+  REVOKED = 'REVOKED',
+  PENDING_RENEWAL = 'PENDING_RENEWAL',
+}

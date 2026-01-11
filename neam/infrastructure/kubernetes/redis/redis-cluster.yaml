@@ -1,0 +1,355 @@
+# Redis Cluster for Caching and Session Management
+# Production-grade configuration with high availability
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-platform
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: neam
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+data:
+  redis.conf: |
+    # Redis Configuration for NEAM Platform
+
+    # Network
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+
+    # General
+    daemonize no
+    supervised no
+    pidfile /var/run/redis/redis-server.pid
+    loglevel notice
+    logfile /var/log/redis/redis-server.log
+
+    # Working directory
+    dir /data
+
+    # Snapshotting (RDB persistence)
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+
+    # AOF (Append Only File) persistence
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+
+    # Memory management
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+
+    # Lazy freeing
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    replica-lazy-flush yes
+
+    # Append-only mode
+    no-appendfsync-on-rewrite no
+
+    # Slow log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+    # Latency monitor
+    latency-monitor-threshold 0
+
+    # Event notification
+    notify-keyspace-events ""
+
+    # Advanced config
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+    stream-node-max-bytes 4096
+    stream-node-max-entries 100
+    activerehashing yes
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    hz 10
+    dynamic-hz yes
+    aof-rewrite-incremental-fsync yes
+    rdb-save-incremental-fsync yes
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-secrets
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+type: Opaque
+stringData:
+  redis-password: "${REDIS_PASSWORD}"
+
+---
+apiVersion: redis-operator.k8s/v1beta1
+kind: RedisCluster
+metadata:
+  name: neam-redis
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: neam
+spec:
+  # 6 nodes: 3 masters with 3 replicas
+  redisClusterSize: 6
+  image: redis:7.2-alpine
+  version: 7.2
+
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: nvme-ssd
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 50Gi
+
+  redisLeader:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                redis.kun.dev/role: leader
+            topologyKey: kubernetes.io/hostname
+
+  redisFollower:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+
+  clusterController:
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+
+  tolerations:
+    - key: "cache"
+      operator: "Equal"
+      value: "enabled"
+      effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-redis
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    redis.kun.dev/role: leader
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-redis-followers
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    redis.kun.dev/role: follower
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-redis-headless
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+spec:
+  clusterIP: None
+  ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
+  selector:
+    redis.kun.dev/cluster: neam-redis
+
+---
+# Redis Sentinel for automatic failover
+apiVersion: redis-operator.k8s/v1beta1
+kind: RedisSentinel
+metadata:
+  name: neam-redis-sentinel
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis-sentinel
+spec:
+  image: redis:7.2-alpine
+  version: 7.2
+
+  masterName: neam-redis-master
+
+  redisSentinel:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              redis.kun.dev/sentinel: "true"
+          topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-redis-sentinel
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis-sentinel
+spec:
+  clusterIP: None
+  ports:
+    - name: sentinel
+      port: 26379
+      targetPort: sentinel
+      protocol: TCP
+  selector:
+    redis.kun.dev/sentinel: "true"
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: neam-cache
+spec:
+  podSelector:
+    matchLabels:
+      redis.kun.dev/cluster: neam-redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: neam
+      ports:
+        - protocol: TCP
+          port: 6379
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: neam-cache
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 26379
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# Prometheus ServiceMonitor for Redis
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-monitor
+  namespace: neam-cache
+  labels:
+    app.kubernetes.io/name: neam-redis
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neam-redis
+  namespaceSelector:
+    matchNames:
+      - neam-cache
+  endpoints:
+    - port: redis
+      interval: 15s
+      path: /metrics

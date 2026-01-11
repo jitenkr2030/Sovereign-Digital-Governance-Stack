@@ -1,0 +1,329 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Report Metadata
+  reporting-db:
+    image: postgres:15-alpine
+    container_name: csic-reporting-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reporting_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reporting_secure_pass_2024}
+      POSTGRES_DB: csic_reporting
+    volumes:
+      - reporting_db_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reporting_admin} -d csic_reporting"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Redis for BullMQ Job Queue
+  reporting-redis:
+    image: redis:7-alpine
+    container_name: csic-reporting-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - reporting_redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Apache Kafka for Event Streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-reporting-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-reporting-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # MinIO for S3-Compatible Storage (WORM Storage)
+  minio:
+    image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+    container_name: csic-reporting-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_secure_2024}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Regulatory Reporting API Service
+  reporting-api:
+    build:
+      context: ../../..
+      dockerfile: service/reporting/regulatory/internal/deploy/Dockerfile
+    container_name: csic-reporting-api
+    environment:
+      # Application Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${REPORTING_PORT:-3001}
+      
+      # Database Configuration
+      DB_HOST: reporting-db
+      DB_PORT: 5432
+      DB_NAME: csic_reporting
+      DB_USER: ${POSTGRES_USER:-reporting_admin}
+      DB_PASS: ${POSTGRES_PASSWORD:-reporting_secure_pass_2024}
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      
+      # Redis Configuration
+      REDIS_HOST: reporting-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      
+      # Kafka Configuration
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: csic-reporting-service
+      KAFKA_GROUP_ID: csic-reporting-group
+      
+      # Storage Configuration (S3/MinIO)
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin_secure_2024}
+      S3_BUCKET: csic-reports
+      S3_REGION: us-east-1
+      
+      # Report Storage Configuration
+      REPORT_STORAGE_PATH: /app/reports
+      WORM_ENABLED: ${WORM_ENABLED:-true}
+      WORM_RETENTION_DAYS: ${WORM_RETENTION_DAYS:-2555}
+      
+      # Scheduler Configuration
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      SCHEDULER_CONCURRENCY: 5
+      
+      # Monitoring Configuration
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_PORT: ${REPORTING_METRICS_PORT:-9091}
+      METRICS_PATH: /metrics
+      
+      # Logging Configuration
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: json
+      
+      # Security Configuration
+      JWT_SECRET: ${JWT_SECRET:-reporting-jwt-secret-2024}
+      JWT_EXPIRY: 24h
+      
+      # CORS Configuration
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    ports:
+      - "${REPORTING_PORT:-3001}:3001"
+      - "${REPORTING_METRICS_PORT:-9091}:9091"
+    volumes:
+      - reports_data:/app/reports
+      - ./config/prometheus:/etc/prometheus
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+      reporting-redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - reporting-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Prometheus for Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: csic-reporting-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus:/etc/prometheus
+      - ./config/prometheus/rules:/etc/prometheus/rules
+    ports:
+      - "9090:9090"
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-reporting-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-grafana_secure_2024}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Elasticsearch for Report Search (Optional)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: csic-reporting-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+  # Kibana for Elasticsearch Visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: csic-reporting-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - reporting-network
+    restart: unless-stopped
+
+volumes:
+  reporting_db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/postgres
+  reporting_redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/redis
+  kafka_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/kafka
+  zookeeper_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/zookeeper
+  minio_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/minio
+  reports_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/reports
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/prometheus
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/grafana
+  elasticsearch_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/../../data/reporting/elasticsearch
+
+networks:
+  reporting-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

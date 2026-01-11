@@ -1,0 +1,282 @@
+# ArgoCD Installation Values for NEAM Platform
+# Install with: helm install argocd argo/argo-cd -f values.yaml -n argocd
+
+global:
+  image:
+    repository: quay.io/argoproj/argocd
+    tag: v2.9.3
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+
+# Configure server replica count for HA
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+
+# Configure server settings
+server:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 443
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    hosts:
+      - argocd.example.com
+    tls:
+      - secretName: argocd-tls
+        hosts:
+          - argocd.example.com
+  configEnabled: true
+  config:
+    url: https://argocd.example.com
+    exec.enabled: "true"
+
+# Configure repository server
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  volumeMounts:
+    - name: gpg-keyring
+      mountPath: /app/config/gpg/source
+    - name: gpg-keyring
+      mountPath: /app/config/gpg/keys
+  volumes:
+    - name: gpg-keyring
+      emptyDir: {}
+
+# Configure Dex identity provider
+dex:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Configure Redis
+redis:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  volume:
+    size: 1Gi
+
+# Configure notifications
+notifications:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Application set controller for multi-cluster management
+applicationSet:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# RBAC configuration
+# Add custom RBAC policies here
+rbac:
+  create: true
+  policy:
+    |
+    # Default roles
+    p, role:readonly, applications, get, */, readonly
+    p, role:readonly, projects, get, */, readonly
+    p, role:readonly, repositories, get, */, readonly
+    
+    # Developer role
+    p, role:developer, applications, create, */, allow
+    p, role:developer, applications, update, */, allow
+    p, role:developer, applications, delete, */, allow
+    p, role:developer, applications, sync, */, allow
+    p, role:developer, projects, create, */, allow
+    p, role:developer, projects, update, */, allow
+    
+    # Admin role
+    p, role:admin, applications, *, */, allow
+    p, role:admin, projects, *, */, allow
+    p, role:admin, repositories, *, */, allow
+    p, role:admin, clusters, *, */, allow
+    p, role:admin, accounts, *, */, allow
+    
+    # Groups mapping (configure SSO for actual use)
+    g, platform-admins, role:admin
+    g, platform-developers, role:developer
+    g, platform-viewers, role:readonly
+
+# SSO configuration (configure with actual OIDC provider)
+configs:
+  cm:
+    # Application settings
+    timeout.reconciliation: 180s
+    timeout.hard.reconciliation: 3600s
+    resource.compareoptions: ignoreaggregatedpsp
+    resource.inclusions: |
+      - group: ""
+        kind: ResourceQuota
+      - group: ""
+        kind: LimitRange
+    resource.exclusions: |
+      - group: ""
+        kind: Event
+    application.instanceLabelKey: argocd.argoproj.io/instance
+    applicationset.enable.git.submodule: "false"
+    
+    # Kustomize settings
+    kustomize.version: v5.2.1
+    
+    # URL settings
+    server:
+      rootpath: ""
+      basehref: /
+      secureproxy.additionalheader: X-Forwarded-Proto
+      dex.server.disabled.protocols: v1
+    
+    # Extension settings
+    extension.config: |
+      # Extension configurations
+
+  # SSO configuration (uncomment and configure for production)
+  # rbac:
+  #   scopes: '[groups]'
+  #   policy.csv: |
+  #     g, my-org-admins, role:admin
+    
+  # Secret configuration
+  secrets:
+    # GitHub client secret (use external secret for production)
+    # github.clientSecret: $github-client-secret
+    
+    # OIDC client secret
+    # oidc.clientSecret: $oidc-client-secret
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  selector:
+    matchLabels:
+      release: prometheus
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network policy
+networkPolicy:
+  enabled: true
+  allowFrom:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-server
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-repo-server
+  egress:
+    - to:
+        - namespaceSelector: {}
+
+# Resource quotas
+resourceQuota:
+  enabled: true
+  hard:
+    cpu: "4"
+    memory: 8Gi
+    pods: "50"
+    persistentvolumeclaims: "10"
+    services: "20"
+    replicationcontrollers: "20"
+    secrets: "100"
+    configmaps: "100"
+
+# Limit range
+limitRange:
+  enabled: true
+  limits:
+    - type: Container
+      max:
+        memory: 2Gi
+        cpu: "2"
+      min:
+        memory: 16Mi
+        cpu: 10m
+    - type: Pod
+      max:
+        memory: 4Gi
+        cpu: "4"
+
+# Horizontal pod autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80

@@ -1,0 +1,110 @@
+# Energy Integration Service Configuration
+# All settings can be overridden by environment variables with ENERGY_ prefix
+
+app:
+  host: "0.0.0.0"
+  port: 8080
+  environment: "development"
+  read_timeout: 30
+  write_timeout: 30
+  shutdown_timeout: 10
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "energy_integration"
+  username: "energy_user"
+  password: "energy_password"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+logging:
+  level: "info"
+  output: "stdout"
+
+# Carbon calculation settings
+carbon:
+  # Default carbon intensity (kg CO2 per kWh) by energy source
+  default_intensity: 0.5
+  # Minimum transaction threshold for detailed calculation
+  min_gas_threshold: 21000
+  # Enable real-time carbon intensity from external oracles
+  enable_oracle: false
+
+# Supported blockchain networks
+networks:
+  - chain_id: "ethereum"
+    chain_name: "Ethereum"
+    consensus: "proof_of_work"
+    avg_kwh_per_tx: 0.038
+    base_carbon_grams: 19.0
+    energy_source: "mixed"
+    carbon_intensity: 0.5
+  
+  - chain_id: "ethereum-pos"
+    chain_name: "Ethereum Proof of Stake"
+    consensus: "proof_of_stake"
+    avg_kwh_per_tx: 0.0006
+    base_carbon_grams: 0.3
+    energy_source: "mixed"
+    carbon_intensity: 0.5
+  
+  - chain_id: "bitcoin"
+    chain_name: "Bitcoin"
+    consensus: "proof_of_work"
+    avg_kwh_per_tx: 850.0
+    base_carbon_grams: 425000.0
+    energy_source: "fossil_fuel"
+    carbon_intensity: 0.9
+  
+  - chain_id: "polygon"
+    chain_name: "Polygon"
+    consensus: "proof_of_stake"
+    avg_kwh_per_tx: 0.0009
+    base_carbon_grams: 0.45
+    energy_source: "mixed"
+    carbon_intensity: 0.5
+  
+  - chain_id: "solana"
+    chain_name: "Solana"
+    consensus: "proof_of_history"
+    avg_kwh_per_tx: 0.0007
+    base_carbon_grams: 0.35
+    energy_source: "mixed"
+    carbon_intensity: 0.5
+
+# Carbon offset certificate settings
+certificates:
+  # Supported registries
+  registries:
+    - "I-REC"
+    - "GSE"
+    - "ACR"
+    - "VCS"
+  # Default validity period in days
+  default_validity_days: 365
+  # Minimum offset amount in grams
+  min_offset_grams: 1.0
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+
+# Prometheus metrics configuration
+prometheus:
+  enabled: true
+  histogram_buckets:
+    - 0.005
+    - 0.01
+    - 0.025
+    - 0.05
+    - 0.1
+    - 0.25
+    - 0.5
+    - 1.0
+    - 2.5
+    - 5.0
+    - 10.0

@@ -1,0 +1,90 @@
+# Blockchain Indexer Service Configuration
+# CSIC Platform - Blockchain Indexer Module
+
+# Application Configuration
+app:
+  name: "blockchain-indexer"
+  host: "0.0.0.0"
+  port: 8087
+  environment: "development"
+  debug: true
+  log_level: "debug"
+
+# Database Configuration (PostgreSQL with TimescaleDB)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "csic_password"
+  name: "csic_blockchain"
+  ssl_mode: "disable"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: 300
+
+# Redis Configuration (for caching)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:indexer:"
+  pool_size: 20
+
+# Kafka Configuration (for block events)
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "indexer-consumer"
+  topics:
+    blocks: "csic.blocks"
+    transactions: "csic.transactions"
+    events: "csic.events"
+  producer:
+    required_acks: "all"
+    retry_max: 3
+
+# Blockchain Node Configuration
+blockchain:
+  network: "mainnet"
+  node_url: "http://localhost:8545"
+  ws_url: "ws://localhost:8546"
+  chain_id: 1
+  start_block: 0
+  batch_size: 100
+  confirmation_blocks: 12
+
+# Indexer Configuration
+indexer:
+  workers: 4
+  batch_interval: 1000
+  reindex_enabled: true
+  reindex_batch_size: 1000
+  cache_ttl: 3600
+
+# Elasticsearch Configuration (for complex queries)
+elasticsearch:
+  enabled: false
+  addresses:
+    - "http://localhost:9200"
+  index: "csic-blocks"
+  username: ""
+  password: ""
+
+# GraphQL Configuration
+graphql:
+  enabled: true
+  playground: true
+  introspection: true
+
+# Health Check Configuration
+health:
+  interval: 30
+  timeout: 10
+  retries: 3
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090

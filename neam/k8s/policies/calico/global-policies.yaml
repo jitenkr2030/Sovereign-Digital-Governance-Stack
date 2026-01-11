@@ -1,0 +1,370 @@
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: default-deny-all
+  annotations:
+    description: "Default deny all traffic policy for the cluster"
+spec:
+  order: 1000
+  selector: all()
+  types:
+    - Ingress
+    - Egress
+  ingress:
+    - action: Deny
+      source: {}
+      destination: {}
+  egress:
+    - action: Deny
+      source: {}
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-dns-egress
+  annotations:
+    description: "Allow DNS resolution for all workloads"
+spec:
+  order: 900
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      protocol: UDP
+      destination:
+        selector: k8s-app == "kube-dns"
+        ports:
+          - "53"
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: k8s-app == "kube-dns"
+        ports:
+          - "53"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-metadata-service
+  annotations:
+    description: "Allow access to Kubernetes metadata service"
+spec:
+  order: 890
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        nets:
+          - "169.254.169.254/32"
+        ports:
+          - "80"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-spire-server-access
+  annotations:
+    description: "Allow SPIRE agents to communicate with SPIRE server"
+spec:
+  order: 800
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: app == "spire-server"
+        namespaceSelector: namespace == "spire"
+        ports:
+          - "8081"
+          - "8080"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-spire-agent-socket
+  annotations:
+    description: "Allow workloads to access local SPIRE agent socket"
+spec:
+  order: 750
+  selector: all()
+  types:
+    - Ingress
+    - Egress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app == "spire-agent"
+      destination:
+        ports:
+          - "8080"
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        nets:
+          - "127.0.0.1/32"
+        ports:
+          - "8080"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-health-checks
+  annotations:
+    description: "Allow Kubernetes health checks"
+spec:
+  order: 700
+  selector: all()
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        nets:
+          - "10.244.0.0/16"
+          - "10.0.0.0/8"
+      destination:
+        ports:
+          - "8080"
+          - "9090"
+          - "15020"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-monitoring-egress
+  annotations:
+    description: "Allow monitoring namespace to scrape metrics"
+spec:
+  order: 600
+  selector: all()
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "monitoring"
+      destination:
+        ports:
+          - "2112"
+          - "9090"
+          - "8080"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-istio-control-plane
+  annotations:
+    description: "Allow Istio control plane communication"
+spec:
+  order: 550
+  selector: all()
+  types:
+    - Ingress
+    - Egress
+  ingress:
+    - action: Allow
+      source:
+        selector: app == "istiod"
+        namespaceSelector: namespace == "istio-system"
+      destination:
+        ports:
+          - "15012"
+          - "15014"
+  egress:
+    - action: Allow
+      destination:
+        selector: app == "istiod"
+        namespaceSelector: namespace == "istio-system"
+        ports:
+          - "15012"
+          - "15014"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-istio-ingress
+  annotations:
+    description: "Allow Istio ingress gateway"
+spec:
+  order: 500
+  selector: all()
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        nets:
+          - "0.0.0.0/0"
+      destination:
+        selector: app == "istio-ingressgateway"
+        namespaceSelector: namespace == "istio-system"
+        ports:
+          - "80"
+          - "443"
+          - "15443"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-istio-egress-gateway
+  annotations:
+    description: "Allow Istio egress gateway for external access"
+spec:
+  order: 490
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      destination:
+        selector: app == "istio-egressgateway"
+        namespaceSelector: namespace == "istio-system"
+        ports:
+          - "8443"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: deny-internet-egress-default
+  annotations:
+    description: "Deny direct internet access by default"
+spec:
+  order: 400
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Deny
+      destination:
+        nets:
+          - "0.0.0.0/0"
+          - "::/0"
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-namespace-internal
+  annotations:
+    description: "Allow communication within the same namespace"
+spec:
+  order: 300
+  selector: all()
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "target.namespace.name"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-finance-internal
+  annotations:
+    description: "Allow finance namespace internal communication"
+spec:
+  order: 200
+  selector: app == "finance"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "finance"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-intelligence-internal
+  annotations:
+    description: "Allow intelligence namespace internal communication"
+spec:
+  order: 200
+  selector: app == "intelligence"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "intelligence"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-data-internal
+  annotations:
+    description: "Allow data namespace internal communication"
+spec:
+  order: 200
+  selector: app == "data"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "data"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-core-internal
+  annotations:
+    description: "Allow core namespace internal communication"
+spec:
+  order: 200
+  selector: app == "core"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "core"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-monitoring-internal
+  annotations:
+    description: "Allow monitoring namespace internal communication"
+spec:
+  order: 200
+  selector: app == "monitoring"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "monitoring"
+      destination: {}
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-spire-internal
+  annotations:
+    description: "Allow spire namespace internal communication"
+spec:
+  order: 200
+  selector: app == "spire"
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      source:
+        namespaceSelector: namespace == "spire"
+      destination: {}

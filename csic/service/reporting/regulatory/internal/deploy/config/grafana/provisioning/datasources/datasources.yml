@@ -1,0 +1,87 @@
+apiVersion: 1
+
+providers:
+  - name: 'Regulatory Reporting Dashboards'
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
+
+  - name: 'CSIC Platform Dashboards'
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true
+
+datasources:
+  - name: 'Prometheus'
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: GET
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.48.0
+      cacheLevel: 'High'
+      disableRecordingRules: false
+      exemplarTraceIdDestinations:
+        - name: 'Trace ID'
+          datasourceUid: 'tracing'
+    secureJsonData:
+      # Add API key if needed for cloud-hosted Prometheus
+      # apiKey: ${GRAFANA_PROMETHEUS_API_KEY}
+    version: 1
+
+  - name: 'PostgreSQL Reporting'
+    type: postgres
+    access: proxy
+    url: reporting-db:5432
+    database: csic_reporting
+    user: ${POSTGRES_USER:-reporting_admin}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD:-reporting_secure_pass_2024}
+    jsonData:
+      sslmode: 'disable'
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false
+
+  - name: 'Elasticsearch Reports'
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    database: '[reports-]YYYY.MM.DD'
+    jsonData:
+      interval: Daily
+      timeField: '@timestamp'
+      logMessageField: message
+      logLevelField: level
+      indexPattern: '[reports-]YYYY.MM.DD'
+      esVersion: 8.11.0
+
+  - name: 'MinIO S3 Reports'
+    type:grafana-simple-json-datasource
+    access: proxy
+    url: http://minio:9000
+    jsonData:
+      # Custom configuration for MinIO/S3 access
+      bucket: csic-reports
+      endpoint: minio:9000
+      region: us-east-1
+      accessKey: ${MINIO_ROOT_USER:-minioadmin}
+      secretKey: ${MINIO_ROOT_PASSWORD:-minioadmin_secure_2024}
+      signatureVersion: 'v4'
+    secureJsonData:
+      secretKey: ${MINIO_ROOT_PASSWORD:-minioadmin_secure_2024}

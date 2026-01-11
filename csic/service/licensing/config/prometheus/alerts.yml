@@ -1,0 +1,391 @@
+# Prometheus Alerting Rules for CSIC Licensing Service
+# These rules define the alerting conditions for the Licensing & Compliance module
+# covering system health, database connectivity, license management, and compliance monitoring.
+
+groups:
+  # Service Health Alerts
+  - name: licensing-service-health
+    rules:
+      - alert: LicensingServiceDown
+        expr: up{job="csic-licensing-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: licensing
+          component: application
+        annotations:
+          summary: "CSIC Licensing Service is down"
+          description: "The licensing service has been unavailable for more than 1 minute."
+          runbook_url: "https://wiki.csic.internal/runbooks/licensing-service-down"
+
+      - alert: LicensingServiceHighErrorRate
+        expr: rate(http_requests_total{job="csic-licensing-service",status=~"5.."}[5m]) / rate(http_requests_total{job="csic-licensing-service"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: application
+        annotations:
+          summary: "High error rate in licensing service"
+          description: "More than 5% of HTTP requests are returning 5xx errors."
+          runbook_url: "https://wiki.csic.internal/runbooks/high-error-rate"
+
+      - alert: LicensingServiceLatencyHigh
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="csic-licensing-service"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: application
+        annotations:
+          summary: "High latency in licensing service"
+          description: "95th percentile HTTP request latency is above 2 seconds."
+          runbook_url: "https://wiki.csic.internal/runbooks/high-latency"
+
+  # Database Health Alerts
+  - name: licensing-database-health
+    rules:
+      - alert: LicensingDatabaseDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: licensing
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "The licensing database is not responding to health checks."
+          runbook_url: "https://wiki.csic.internal/runbooks/database-down"
+
+      - alert: LicensingDatabaseConnectionsHigh
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: database
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection usage is above 80% of maximum."
+          runbook_url: "https://wiki.csic.internal/runbooks/high-connections"
+
+      - alert: LicensingDatabaseSlowQueries
+        expr: rate(pg_stat_statements_total{job="csic-postgresql"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: database
+        annotations:
+          summary: "Slow database queries detected"
+          description: "More than 10 slow queries per second detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/slow-queries"
+
+      - alert: LicensingDatabaseReplicationLag
+        expr: pg_replication_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: database
+        annotations:
+          summary: "Database replication lag detected"
+          description: "Database replication lag is above 30 seconds."
+          runbook_url: "https://wiki.csic.internal/runbooks/replication-lag"
+
+  # Cache Health Alerts
+  - name: licensing-cache-health
+    rules:
+      - alert: LicensingCacheDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: licensing
+          component: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "The licensing cache is not responding to health checks."
+          runbook_url: "https://wiki.csic.internal/runbooks/cache-down"
+
+      - alert: LicensingCacheMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: cache
+        annotations:
+          summary: "Redis cache memory usage high"
+          description: "Cache memory usage is above 80% of maximum."
+          runbook_url: "https://wiki.csic.internal/runbooks/cache-memory"
+
+      - alert: LicensingCacheEvictionsHigh
+        expr: rate(redis_keyspace_evictions_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: cache
+        annotations:
+          summary: "High cache eviction rate"
+          description: "More than 10 cache evictions per second detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/cache-evictions"
+
+  # Kafka Health Alerts
+  - name: licensing-kafka-health
+    rules:
+      - alert: LicensingKafkaDown
+        expr: kafka_broker_is_active{job="csic-kafka"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: licensing
+          component: message-queue
+        annotations:
+          summary: "Kafka broker is down"
+          description: "A Kafka broker is not active."
+          runbook_url: "https://wiki.csic.internal/runbooks/kafka-down"
+
+      - alert: LicensingKafkaUnderReplicatedPartitions
+        expr: kafka_under_replicated_partitions > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: message-queue
+        annotations:
+          summary: "Kafka under-replicated partitions"
+          description: "There are under-replicated partitions in Kafka."
+          runbook_url: "https://wiki.csic.internal/runbooks/under-replicated"
+
+      - alert: LicensingKafkaConsumerLagHigh
+        expr: kafka_consumer_group_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: licensing
+          component: message-queue
+        annotations:
+          summary: "High consumer lag in Kafka"
+          description: "Consumer lag for licensing service group is above 1000 messages."
+          runbook_url: "https://wiki.csic.internal/runbooks/consumer-lag"
+
+  # License Management Alerts
+  - name: licensing-management
+    rules:
+      - alert: ExpiringLicenses
+        expr: count(license_expiry_days <= 30) > 0
+        for: 1h
+        labels:
+          severity: warning
+          service: licensing
+          component: license-management
+        annotations:
+          summary: "Licenses expiring soon"
+          description: "{{ $value }} licenses are expiring within 30 days."
+          runbook_url: "https://wiki.csic.internal/runbooks/expiring-licenses"
+
+      - alert: ExpiredLicenses
+        expr: count(license_expiry_days <= 0) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: licensing
+          component: license-management
+        annotations:
+          summary: "Expired licenses detected"
+          description: "{{ $value }} licenses have expired."
+          runbook_url: "https://wiki.csic.internal/runbooks/expired-licenses"
+
+      - alert: SuspendedLicenses
+        expr: count(license_status == "suspended") > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: license-management
+        annotations:
+          summary: "Suspended licenses exist"
+          description: "{{ $value }} licenses are currently suspended."
+          runbook_url: "https://wiki.csic.internal/runbooks/suspended-licenses"
+
+      - alert: RevokedLicenses
+        expr: count(license_status == "revoked") > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: licensing
+          component: license-management
+        annotations:
+          summary: "Revoked licenses detected"
+          description: "{{ $value }} licenses have been revoked."
+          runbook_url: "https://wiki.csic.internal/runbooks/revoked-licenses"
+
+  # Compliance Alerts
+  - name: licensing-compliance
+    rules:
+      - alert: ComplianceViolationsHigh
+        expr: count(compliance_violation_severity == "high") > 0
+        for: 1h
+        labels:
+          severity: warning
+          service: licensing
+          component: compliance
+        annotations:
+          summary: "High severity compliance violations"
+          description: "{{ $value }} high severity compliance violations detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/high-violations"
+
+      - alert: ComplianceViolationsCritical
+        expr: count(compliance_violation_severity == "critical") > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: licensing
+          component: compliance
+        annotations:
+          summary: "Critical compliance violations"
+          description: "{{ $value }} critical compliance violations require immediate attention."
+          runbook_url: "https://wiki.csic.internal/runbooks/critical-violations"
+
+      - alert: ComplianceRateLow
+        expr: compliance_rate < 0.8
+        for: 24h
+        labels:
+          severity: warning
+          service: licensing
+          component: compliance
+        annotations:
+          summary: "Compliance rate below threshold"
+          description: "Overall compliance rate is below 80%."
+          runbook_url: "https://wiki.csic.internal/runbooks/low-compliance"
+
+      - alert: OpenInvestigationsHigh
+        expr: count(compliance_investigation_status == "open") > 10
+        for: 1h
+        labels:
+          severity: warning
+          service: licensing
+          component: compliance
+        annotations:
+          summary: "High number of open investigations"
+          description: "{{ $value }} compliance investigations are open."
+          runbook_url: "https://wiki.csic.internal/runbooks/open-investigations"
+
+  # Reporting Alerts
+  - name: licensing-reporting
+    rules:
+      - alert: OverdueReports
+        expr: count(report_deadline_passed == true) > 0
+        for: 1h
+        labels:
+          severity: warning
+          service: licensing
+          component: reporting
+        annotations:
+          summary: "Overdue regulatory reports"
+          description: "{{ $value }} regulatory reports are overdue."
+          runbook_url: "https://wiki.csic.internal/runbooks/overdue-reports"
+
+      - alert: SARFilingsPending
+        expr: count(sar_status == "pending") > 5
+        for: 2h
+        labels:
+          severity: warning
+          service: licensing
+          component: reporting
+        annotations:
+          summary: "Pending SAR filings"
+          description: "{{ $value }} suspicious activity reports are pending filing."
+          runbook_url: "https://wiki.csic.internal/runbooks/pending-sars"
+
+      - alert: ReportSubmissionFailure
+        expr: increase(report_submission_failures_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: reporting
+        annotations:
+          summary: "Report submission failures"
+          description: "Failed to submit {{ $value }} regulatory reports in the last hour."
+          runbook_url: "https://wiki.csic.internal/runbooks/submission-failures"
+
+  # Security Alerts
+  - name: licensing-security
+    rules:
+      - alert: AuthenticationFailuresHigh
+        expr: rate(authentication_failures_total[5m]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          service: licensing
+          component: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "More than 10 authentication failures per minute detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/auth-failures"
+
+      - alert: RateLimitExceeded
+        expr: rate(rate_limit_exceeded_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: licensing
+          component: security
+        annotations:
+          summary: "Rate limit exceeded"
+          description: "More than 5 rate limit violations per minute detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/rate-limit"
+
+      - alert: UnauthorizedAccessAttempts
+        expr: increase(unauthorized_access_attempts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: licensing
+          component: security
+        annotations:
+          summary: "Unauthorized access attempts detected"
+          description: "{{ $value }} unauthorized access attempts detected."
+          runbook_url: "https://wiki.csic.internal/runbooks/unauthorized-access"
+
+  # Resource Utilization Alerts
+  - name: licensing-resources
+    rules:
+      - alert: CPUUsageHigh
+        expr: rate(process_cpu_seconds_total{job="csic-licensing-service"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: licensing
+          component: resources
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% for the licensing service."
+          runbook_url: "https://wiki.csic.internal/runbooks/cpu-usage"
+
+      - alert: MemoryUsageHigh
+        expr: process_resident_memory_bytes{job="csic-licensing-service"} / process_virtual_memory_max_bytes > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: licensing
+          component: resources
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 80% for the licensing service."
+          runbook_url: "https://wiki.csic.internal/runbooks/memory-usage"
+
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: licensing
+          component: resources
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is above 80% on the root filesystem."
+          runbook_url: "https://wiki.csic.internal/runbooks/disk-space"

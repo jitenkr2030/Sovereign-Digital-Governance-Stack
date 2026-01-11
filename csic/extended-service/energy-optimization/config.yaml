@@ -1,0 +1,83 @@
+# Energy Optimization Service Configuration
+# Port: 8088 | Schema: energy | Redis Prefix: csic:energy:
+
+app:
+  host: "0.0.0.0"
+  port: 8088
+  name: "energy-optimization-service"
+  environment: "development"
+
+# PostgreSQL Configuration (shared instance + table prefix isolation)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "backend_shared"
+  table_prefix: "sess_8ab84f7d_energy_"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+# Redis Configuration (key prefix isolation)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "sess:8ab84f7d:energy:"
+  pool_size: 10
+
+# Kafka Configuration for energy telemetry events
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "sess_8ab84f7d_energy_consumer"
+  topics:
+    energy_readings: "sess_8ab84f7d_energy_readings"
+    load_balancing: "sess_8ab84f7d_load_balancing"
+    carbon_emissions: "sess_8ab84f7d_carbon_emissions"
+
+# Carbon Tracking Configuration
+carbon:
+  # Emission factors per energy source (kg CO2 per kWh)
+  emission_factors:
+    coal: 0.95
+    natural_gas: 0.45
+    nuclear: 0.012
+    solar: 0.041
+    wind: 0.011
+    hydro: 0.024
+    grid_average: 0.42
+  # Carbon budget thresholds (in kg CO2)
+  budget_warning_threshold: 80.0
+  budget_critical_threshold: 95.0
+
+# Smart Load Balancing Configuration
+load_balancing:
+  # Target utilization percentages
+  target_utilization_min: 60.0
+  target_utilization_max: 80.0
+  # Auto-scaling thresholds
+  scale_up_threshold: 85.0
+  scale_down_threshold: 50.0
+  # Frequency of load checks
+  check_interval: 30s
+
+# Energy Meter Configuration
+meters:
+  default_sample_interval: 1m
+  aggregation_window: 15m
+  max_reading_age: 24h
+
+# Prometheus Metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+  port: 9090
+
+# Logging
+logging:
+  level: "info"
+  format: "json"

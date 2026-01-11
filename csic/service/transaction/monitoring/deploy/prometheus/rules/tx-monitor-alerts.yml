@@ -1,0 +1,63 @@
+groups:
+  - name: tx-monitor.rules
+    rules:
+      - alert: HighRiskScoreDetected
+        expr: csic_tx_monitor_wallet_risk_score > 75
+        for: 5m
+        labels:
+          severity: high
+          service: tx-monitor
+        annotations:
+          summary: "High risk wallet detected"
+          description: "Wallet {{ $labels.address }} has risk score {{ $value }}"
+
+      - alert: SanctionsMatchDetected
+        expr: increase(csic_tx_monitor_alerts_total{alert_type="sanctions_match"}[5m]) > 0
+        labels:
+          severity: critical
+          service: tx-monitor
+        annotations:
+          summary: "Sanctions match detected"
+          description: "New sanctions match alert triggered"
+
+      - alert: ClusteringPerformanceSlow
+        expr: histogram_quantile(0.95, rate(csic_tx_monitor_clustering_duration_seconds_bucket[5m])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: tx-monitor
+        annotations:
+          summary: "Clustering performance degradation"
+          description: "95th percentile clustering duration is {{ $value }}s"
+
+      - alert: TransactionProcessingDelay
+        expr: rate(csic_tx_monitor_transactions_processed_total[1m]) > 0 AND rate(csic_tx_monitor_transactions_ingested_total[1m]) - rate(csic_tx_monitor_transactions_processed_total[1m]) > 10
+        labels:
+          severity: warning
+          service: tx-monitor
+        annotations:
+          summary: "Transaction processing delay detected"
+          description: "Transaction ingestion rate exceeds processing rate"
+
+      - alert: HighAlertVolume
+        expr: increase(csic_tx_monitor_alerts_total[1h]) > 100
+        labels:
+          severity: warning
+          service: tx-monitor
+        annotations:
+          summary: "High alert volume detected"
+          description: "{{ $value }} alerts generated in the last hour"
+
+  - name: tx-monitor.recording
+    rules:
+      - record: csic_tx_monitor:wallet_risk_score:avg
+        expr: avg(csic_tx_monitor_wallet_risk_score)
+
+      - record: csic_tx_monitor:alerts_by_severity:rate5m
+        expr: sum by (severity) (rate(csic_tx_monitor_alerts_total[5m]))
+
+      - record: csic_tx_monitor:transactions_by_network:rate1m
+        expr: sum by (network) (rate(csic_tx_monitor_transactions_ingested_total[1m]))
+
+      - record: csic_tx_monitor:cluster_size:avg
+        expr: avg(csic_tx_monitor_cluster_wallet_count)

@@ -1,0 +1,231 @@
+.data-grid-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.data-grid-container:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Loading Overlay */
+.data-grid-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 17, 32, 0.7);
+  z-index: 10;
+}
+
+/* Error and Empty States */
+.data-grid-error,
+.data-grid-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+/* Table Wrapper */
+.data-grid-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+
+/* Table Styles */
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+/* Header Styles */
+.data-grid thead {
+  background: var(--color-bg-tertiary);
+}
+
+.data-grid-header-sticky thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.data-grid-cell-header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  user-select: none;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.data-grid-header-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.data-grid-cell-sortable {
+  cursor: pointer;
+  transition: color var(--transition-fast) var(--ease);
+}
+
+.data-grid-cell-sortable:hover {
+  color: var(--color-text-primary);
+}
+
+.data-grid-cell-sorted {
+  color: var(--color-primary);
+}
+
+.data-grid-sort-icon {
+  font-size: var(--font-size-xs);
+}
+
+/* Body Styles */
+.data-grid tbody tr {
+  transition: background-color var(--transition-fast) var(--ease);
+}
+
+.data-grid-cell {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-light);
+  color: var(--color-text-primary);
+}
+
+/* Compact Mode */
+.data-grid-compact .data-grid-cell {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* Row States */
+.data-grid-row:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.data-grid-row-selected {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+.data-grid-row-clickable {
+  cursor: pointer;
+}
+
+/* Checkbox Column */
+.data-grid-cell-checkbox {
+  width: 48px;
+  text-align: center !important;
+}
+
+.data-grid-cell-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+/* Pagination */
+.data-grid-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--border-light);
+  background: var(--color-bg-tertiary);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.data-grid-pagination-info {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.data-grid-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.data-grid-page-size-select {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.data-grid-page-size-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.data-grid-pagination-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.data-grid-pagination-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+}
+
+.data-grid-pagination-btn:hover:not(:disabled) {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-primary);
+}
+
+.data-grid-pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.data-grid-pagination-btn-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.data-grid-pagination-btn-ellipsis {
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .data-grid-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .data-grid-pagination-info {
+    text-align: center;
+  }
+
+  .data-grid-pagination-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}

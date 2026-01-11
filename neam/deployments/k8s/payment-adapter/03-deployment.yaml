@@ -1,0 +1,219 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-adapter
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+    version: v1
+    tier: sensing
+    component: payment-adapter
+  annotations:
+    description: "NEAM Payment Adapter deployment for ISO 20022 and SWIFT message processing"
+    kubernetes.io/change-cause: "Updated to version v1.2.0"
+spec:
+  # Start with 3 replicas for high availability
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: Recreate  # Consider Recreate for stateful processing if needed
+  selector:
+    matchLabels:
+      app: payment-adapter
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: payment-adapter
+        version: v1
+        tier: sensing
+        component: payment-adapter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        prometheus.io/scheme: "http"
+      spec:
+        serviceAccountName: payment-adapter-sa
+        terminationGracePeriodSeconds: 30
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                      - key: app
+                        operator: In
+                        values:
+                          - payment-adapter
+                  topologyKey: kubernetes.io/hostname
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                preference:
+                  matchExpressions:
+                    - key: node-type
+                      operator: In
+                      values:
+                        - general-purpose
+        containers:
+          - name: payment-adapter
+            image: registry.neam.io/payment-adapter:v1.2.0
+            imagePullPolicy: Always
+            ports:
+              - containerPort: 8084
+                name: http
+                protocol: TCP
+              - containerPort: 9090
+                name: metrics
+                protocol: TCP
+            envFrom:
+              - configMapRef:
+                  name: payment-adapter-config
+              - configMapRef:
+                  name: payment-adapter-env
+              - secretRef:
+                  name: payment-adapter-secrets
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+            resources:
+              requests:
+                cpu: "1000m"
+                memory: "2Gi"
+              limits:
+                cpu: "2000m"
+                memory: "4Gi"
+            livenessProbe:
+              httpGet:
+                path: /health
+                port: 8084
+                scheme: HTTP
+              initialDelaySeconds: 15
+              periodSeconds: 20
+              timeoutSeconds: 10
+              failureThreshold: 3
+              successThreshold: 1
+            readinessProbe:
+              httpGet:
+                path: /ready
+                port: 8084
+                scheme: HTTP
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+              successThreshold: 1
+            startupProbe:
+              httpGet:
+                path: /health
+                port: 8084
+                scheme: HTTP
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 30
+              successThreshold: 1
+            volumeMounts:
+              - name: config-volume
+                mountPath: /app/config.yaml
+                subPath: config.yaml
+                readOnly: true
+              - name: data-volume
+                mountPath: /app/data
+              - name: log-volume
+                mountPath: /app/logs
+              - name: tmp-volume
+                mountPath: /tmp
+              - name: certs-volume
+                mountPath: /etc/certs/kafka
+                readOnly: true
+        volumes:
+          - name: config-volume
+            configMap:
+              name: payment-adapter-config
+              items:
+                - key: config.yaml
+                  path: config.yaml
+          - name: data-volume
+            persistentVolumeClaim:
+              claimName: payment-adapter-data-pvc
+          - name: log-volume
+            emptyDir: {}
+          - name: tmp-volume
+            emptyDir: {}
+          - name: certs-volume
+            secret:
+              secretName: payment-adapter-secrets
+              optional: true
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app: payment-adapter
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-adapter-hpa
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-adapter
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60

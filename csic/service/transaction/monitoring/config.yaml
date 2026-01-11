@@ -1,0 +1,215 @@
+# Transaction Monitoring Service Configuration
+# All configuration is managed through this file
+
+# Application Configuration
+app:
+  name: "csic-tx-monitor"
+  environment: "development"
+  version: "1.0.0"
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120
+
+# PostgreSQL Database Configuration
+database:
+  host: "postgres"
+  port: 5432
+  username: "csic"
+  password: "csic_secret"
+  name: "csic_tx_monitor"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 300
+
+# Redis Cache Configuration
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
+  key_prefix: "csic:txmon:"
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "kafka:9092"
+  consumer_group: "csic-tx-monitor"
+  topics:
+    normalized: "csic.tx.normalized"
+    raw: "csic.blockchain.raw"
+    alerts: "csic.risk.alerts"
+
+# Blockchain Configuration
+blockchain:
+  bitcoin:
+    enabled: false
+    rpc_user: "csic"
+    rpc_password: "csic_secret"
+    rpc_host: "btc-node"
+    rpc_port: 8332
+    use_tls: false
+    wallet_name: "csic-wallet"
+
+  ethereum:
+    enabled: true
+    rpc_endpoint: "https://eth-mainnet.alchemyapi.io/v2/demo"
+    ws_endpoint: "wss://eth-mainnet.alchemyapi.io/v2/demo"
+    chain_id: 1
+    contract_addr: ""
+
+  chains:
+    - id: "ethereum"
+      name: "Ethereum Mainnet"
+      type: "evm"
+      rpc_endpoint: "https://eth-mainnet.alchemyapi.io/v2/demo"
+      start_block: 0
+      confirmations: 12
+    - id: "polygon"
+      name: "Polygon Mainnet"
+      type: "evm"
+      rpc_endpoint: "https://polygon-rpc.com"
+      start_block: 0
+      confirmations: 100
+    - id: "bsc"
+      name: "BNB Smart Chain"
+      type: "evm"
+      rpc_endpoint: "https://bsc-dataseed.binance.org"
+      start_block: 0
+      confirmations: 15
+
+# Risk Scoring Configuration
+risk_scoring:
+  critical_threshold: 80
+  high_threshold: 60
+  medium_threshold: 40
+  sanctions_list_url: "https://www.treasury.gov/ofac/downloads/add.csv"
+  refresh_interval: "24h"
+  enable_real_time: true
+  rules:
+    - id: "velocity_1h"
+      name: "High Velocity (1h)"
+      category: "velocity"
+      score: 25
+      enabled: true
+      description: "More than 100 transactions in 1 hour"
+      parameters:
+        max_tx_count: 100
+        window_seconds: 3600
+    - id: "velocity_24h"
+      name: "High Volume (24h)"
+      category: "velocity"
+      score: 30
+      enabled: true
+      description: "More than 1000 ETH volume in 24h"
+      parameters:
+        max_volume: 1000
+        window_hours: 24
+    - id: "structuring"
+      name: "Structuring Detection"
+      category: "pattern"
+      score: 40
+      enabled: true
+      description: "Multiple transactions near reporting threshold"
+      parameters:
+        thresholds:
+          - 9000
+          - 10000
+          - 49000
+          - 50000
+        tolerance: 100
+    - id: "new_wallet_high_risk"
+      name: "New Wallet High Risk"
+      category: "behavioral"
+      score: 35
+      enabled: true
+      description: "Wallet less than 7 days old with high risk score"
+      parameters:
+        max_age_days: 7
+        risk_threshold: 60
+    - id: "sanctions_link"
+      name: "Sanctions Link"
+      category: "compliance"
+      score: 100
+      enabled: true
+      description: "Direct or indirect link to sanctioned entity"
+      parameters:
+        link_depth: 2
+
+# Clustering Configuration
+clustering:
+  enabled: true
+  common_input_enabled: true
+  deposit_cluster_enabled: true
+  change_link_enabled: true
+  batch_interval: "5m"
+  retention_days: 365
+  max_cluster_depth: 10
+
+# Alerting Configuration
+alerting:
+  enabled: true
+  critical_webhooks:
+    - "https://alerts.csic.example.com/critical"
+    - "https://slack.csic.example.com/alerts"
+  high_webhooks:
+    - "https://alerts.csic.example.com/high"
+  email_enabled: false
+  smtp_config:
+    host: "smtp.example.com"
+    port: 587
+    username: "alerts@csic.example.com"
+    password: "smtp_password"
+    from: "alerts@csic.example.com"
+  retention_days: 90
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  include_caller: true
+  fields:
+    service: "tx-monitor"
+    environment: "development"
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+  prefix: "csic_tx_monitor"
+
+# Security Configuration
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/certs/server.crt"
+    key_file: "/etc/certs/server.key"
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+    max_age: 86400
+  auth:
+    enabled: false
+    jwt_secret: "your-jwt-secret-key-change-in-production"
+    token_expiry: "24h"

@@ -1,0 +1,173 @@
+groups:
+  - name: payment-adapter.rules
+    rules:
+      # Processing Rate
+      - record: payment_adapter:processing_rate:1m
+        expr: sum(rate(payment_adapter_messages_processed_total[1m])) by (status)
+
+      - record: payment_adapter:processing_rate:5m
+        expr: sum(rate(payment_adapter_messages_processed_total[5m])) by (status)
+
+      - record: payment_adapter:processing_rate:15m
+        expr: sum(rate(payment_adapter_messages_processed_total[15m])) by (status)
+
+      # Throughput Targets
+      - record: payment_adapter:throughput_target_ratio
+        expr: |
+          payment_adapter:processing_rate:1m / 5000
+
+      # Latency Histograms
+      - record: payment_adapter:latency_p50
+        expr: histogram_quantile(0.50, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le))
+
+      - record: payment_adapter:latency_p90
+        expr: histogram_quantile(0.90, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le))
+
+      - record: payment_adapter:latency_p95
+        expr: histogram_quantile(0.95, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le))
+
+      - record: payment_adapter:latency_p99
+        expr: histogram_quantile(0.99, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le))
+
+      - record: payment_adapter:latency_p999
+        expr: histogram_quantile(0.999, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le))
+
+      # Kafka Consumer Lag
+      - record: payment_adapter:kafka_lag_total
+        expr: sum(kafka_consumergroup_lag) by (consumergroup, topic)
+
+      - record: payment_adapter:kafka_lag_by_topic
+        expr: sum(kafka_consumergroup_lag) by (topic)
+
+      # Idempotency Metrics
+      - record: payment_adapter:idempotency_hit_rate:5m
+        expr: sum(rate(payment_adapter_idempotency_hits_total[5m])) / sum(rate(payment_adapter_idempotency_total[5m]))
+
+      # Error Rate
+      - record: payment_adapter:error_rate:1m
+        expr: sum(rate(payment_adapter_messages_failed_total[1m])) / sum(rate(payment_adapter_messages_processed_total[1m]))
+
+      - record: payment_adapter:error_rate:5m
+        expr: sum(rate(payment_adapter_messages_failed_total[5m])) / sum(rate(payment_adapter_messages_processed_total[5m]))
+
+      # Worker Pool Metrics
+      - record: payment_adapter:worker_queue_depth
+        expr: payment_adapter_worker_queue_length
+
+      - record: payment_adapter:active_workers
+        expr: payment_adapter_worker_active_count
+
+      # Retry Metrics
+      - record: payment_adapter:retry_rate:1m
+        expr: sum(rate(payment_adapter_retry_total[1m]))
+
+      # DLQ Metrics
+      - record: payment_adapter:dlq_size
+        expr: sum(kafka_topic_partition_current_offset{topic="payments.dlq"})
+
+      - record: payment_adapter:dlq_rate:5m
+        expr: sum(rate(kafka_topic_partition_current_offset{topic="payments.dlq"}[5m]))
+
+      # Resource Utilization
+      - record: payment_adapter:cpu_usage:1m
+        expr: sum(rate(container_cpu_usage_seconds_total{pod=~"payment-adapter.*"}[1m])) by (pod)
+
+      - record: payment_adapter:memory_usage:1m
+        expr: container_memory_working_set_bytes{pod=~"payment-adapter.*"} by (pod)
+
+      # Message Format Distribution
+      - record: payment_adapter:format_distribution:1m
+        expr: sum(rate(payment_adapter_messages_format_total[1m])) by (format)
+
+---
+groups:
+  - name: payment-adapter.alerts
+    rules:
+      # High Processing Lag Alert
+      - alert: PaymentAdapterHighLag
+        expr: |
+          sum(kafka_consumergroup_lag{consumergroup="neam-payment-group-prod"}) > 10000
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "Payment Adapter consumer lag is too high"
+          description: "Consumer lag for payment-adapter has exceeded 10,000 messages for 5 minutes."
+          runbook_url: "https://wiki.neam.io/runbooks/payment-adapter/high-lag"
+
+      # Processing Rate Too Low Alert
+      - alert: PaymentAdapterLowThroughput
+        expr: |
+          sum(rate(payment_adapter_messages_processed_total[5m])) < 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment Adapter throughput is below target"
+          description: "Processing rate has dropped below 1000 messages/second for 10 minutes."
+          runbook_url: "https://wiki.neam.io/runbooks/payment-adapter/low-throughput"
+
+      # High Error Rate Alert
+      - alert: PaymentAdapterHighErrorRate
+        expr: |
+          sum(rate(payment_adapter_messages_failed_total[5m])) / sum(rate(payment_adapter_messages_processed_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "Payment Adapter error rate is too high"
+          description: "Error rate has exceeded 5% for 5 minutes."
+          runbook_url: "https://wiki.neam.io/runbooks/payment-adapter/high-error-rate"
+
+      # High Latency Alert
+      - alert: PaymentAdapterHighLatency
+        expr: |
+          histogram_quantile(0.99, sum(rate(payment_adapter_processing_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment Adapter p99 latency is too high"
+          description: "p99 latency has exceeded 500ms for 5 minutes."
+          runbook_url: "https://wiki.neam.io/runbooks/payment-adapter/high-latency"
+
+      # DLQ Growing Alert
+      - alert: PaymentAdapterDLQGrowning
+        expr: |
+          delta(kafka_topic_partition_current_offset{topic="payments.dlq"}[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment Adapter DLQ is growing"
+          description: "More than 100 messages have been sent to the DLQ in the last 10 minutes."
+          runbook_url: "https://wiki.neam.io/runbooks/payment-adapter/dlq-growth"
+
+      # Pod Not Ready Alert
+      - alert: PaymentAdapterPodNotReady
+        expr: |
+          kube_pod_status_ready{namespace="neam-production",pod=~"payment-adapter.*",condition="true"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment Adapter pod is not ready"
+          description: "Payment adapter pod has been not ready for 5 minutes."
+
+      # Pod Restarting Alert
+      - alert: PaymentAdapterPodRestarting
+        expr: |
+          increase(kube_pod_container_status_restarts_total{namespace="neam-production",pod=~"payment-adapter.*"}[5m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment Adapter pod is restarting frequently"
+          description: "Payment adapter pod has restarted more than 3 times in the last 5 minutes."

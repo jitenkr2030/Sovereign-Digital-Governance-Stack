@@ -1,0 +1,119 @@
+# NEAM Transport Adapter Configuration
+# MQTT v5 client for transportation data ingestion
+
+service:
+  name: "transport-adapter"
+  host: "0.0.0.0"
+  port: 8086
+  environment: "production"
+  shutdown_timeout: 30s
+
+# MQTT v5 Protocol Configuration
+mqtt:
+  enabled: true
+  sources:
+    # Primary MQTT broker for fleet telemetry
+    - broker_url: "mqtt://mqtt-broker:1883"
+      client_id: "neam-transport-adapter"
+      username: "adapter"
+      password: "${MQTT_PASSWORD}"
+      clean_start: false  # Enable session persistence
+      topics:
+        # Vehicle telemetry - standard priority
+        - "fleet/+/vehicle/+/telemetry"
+        - "fleet/+/vehicle/+/gps"
+        - "fleet/+/vehicle/+/status"
+        # Critical alerts - high priority
+        - "fleet/+/vehicle/+/alerts"
+        - "fleet/+/vehicle/+/emergency"
+        # Diagnostic data - low priority
+        - "fleet/+/vehicle/+/diagnostics"
+        - "fleet/+/vehicle/+/debug"
+      qos: 1
+      criticality: "standard"
+    # Secondary MQTT broker for public transport
+    - broker_url: "mqtt://transit-mqtt:1883"
+      client_id: "neam-transit-adapter"
+      topics:
+        - "transit/bus/+/telemetry"
+        - "transit/train/+/telemetry"
+        - "transit/tram/+/telemetry"
+      qos: 1
+      criticality: "standard"
+  # QoS levels by criticality
+  # critical: QoS 2 (exactly-once) - for alerts, emergencies
+  # important: QoS 1 (at-least-once) - for status updates
+  # standard: QoS 1 (at-least-once) - for regular telemetry
+  # background: QoS 0 (at-most-once) - for debug, bulk data
+  qos_by_criticality:
+    critical: 2
+    important: 1
+    standard: 1
+    background: 0
+  keep_alive: 30s
+  session_expiry: 3600s  # 1 hour session persistence
+  timeout: 10s
+  retry_interval: 5s
+  reconnect_wait: 1s
+
+# Kafka Output Configuration
+kafka:
+  brokers: "kafka-cluster:9092"
+  output_topic: "transport.telemetry"
+  dlq_topic: "transport.dlq"
+  version: "2.8.0"
+  max_open_requests: 100
+  dial_timeout: 10s
+  write_timeout: 30s
+
+# Session Management with Redis persistence
+session:
+  max_retries: 10
+  initial_delay: 1s
+  max_delay: 60s
+  multiplier: 2.0
+  health_check_interval: 30s
+  reconnect_wait: 5s
+  state_store_type: "redis"
+  state_store_url: "redis://redis:6379"
+
+# Signal Processing Configuration
+filtering:
+  # Deadband filter - suppress small changes
+  deadband_percent: 0.1  # 0.1% minimum change threshold
+  
+  # Spike detection - flag sudden large changes
+  spike_threshold: 20.0   # 20% deviation threshold
+  spike_window_size: 5    # Samples for baseline calculation
+  
+  # Rate of change - prevent unrealistic data
+  rate_of_change_limit: 10.0  # Maximum % change per second
+  
+  # Quality filter - only accept good quality data
+  quality_filter:
+    - "Good"
+    - "Questionable"
+  
+  # Minimum reporting interval
+  min_reporting_interval: 100ms
+  
+  # Value range validation
+  max_value: 1e9
+  min_value: -1e9
+  
+  # Outlier detection using z-score
+  outlier_threshold: 3.0  # 3 standard deviations
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output_path: "/var/log/neam"
+  json_format: true
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  port: 9092
+  path: "/metrics"
+  health_path: "/health"

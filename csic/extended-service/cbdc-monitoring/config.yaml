@@ -1,0 +1,149 @@
+# CBDC Monitoring Service Configuration
+
+# Application Settings
+app:
+  name: "cbdc-monitoring-service"
+  host: "0.0.0.0"
+  port: 8085
+  environment: "production"
+  log_level: "info"
+
+# Database Configuration (PostgreSQL - shared instance with schema isolation)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_platform"
+  schema: "cbdc"
+  max_open_conns: 100
+  max_idle_conns: 25
+  conn_max_lifetime: "5m"
+
+# Redis Configuration (caching and rate limiting)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:cbdc:"
+  pool_size: 50
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "csic-cbdc-monitoring"
+  topics:
+    transactions: "cbdc.transactions"
+    approvals: "cbdc.approvals"
+    violations: "cbdc.violations"
+    wallets: "cbdc.wallets"
+  producer:
+    acks: "all"
+    retries: 3
+    batch_size: 16384
+    linger_ms: 10
+
+# CBDC Monitoring Settings
+monitoring:
+  # Transaction monitoring thresholds
+  thresholds:
+    max_single_transaction: 50000.00      # Maximum single transaction amount
+    max_daily_limit: 500000.00            # Maximum daily transaction limit per wallet
+    velocity_check_window: "1h"            # Time window for velocity checks
+    max_transactions_per_hour: 100         # Maximum transactions per hour
+  
+  # Policy enforcement mode
+  policy_mode: "strict"                    # strict | audit_only | monitor_only
+  
+  # Privacy tier settings
+  privacy_tiers:
+    tier_1:
+      name: "Basic"
+      kyc_required: false
+      transaction_limit: 1000.00
+      daily_limit: 5000.00
+    tier_2:
+      name: "Standard"
+      kyc_required: true
+      transaction_limit: 10000.00
+      daily_limit: 100000.00
+    tier_3:
+      name: "Premium"
+      kyc_required: true
+      enhanced_kyc: true
+      transaction_limit: 50000.00
+      daily_limit: 500000.00
+  
+  # Programmable money controls
+  programmable_money:
+    enabled: true
+    allow_clauses: true
+    require_audit_trail: true
+    restricted_categories:
+      - "gambling"
+      - "weapons"
+      - "sanctioned_countries"
+
+# Compliance Settings
+compliance:
+  # AML/KYC requirements
+  aml_kyc:
+    require_kyc_for_tier2: true
+    require_enhanced_kyc_for_tier3: true
+    document_verification_required: true
+  
+  # Geographic restrictions
+  geo_restrictions:
+    enabled: true
+    blocked_countries:
+      - "KP"
+      - "IR"
+      - "SY"
+      - "CU"
+    restricted_regions: []
+
+# Rate Limiting
+rate_limit:
+  enabled: true
+  requests_per_minute: 1000
+  burst_size: 100
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+  tracing:
+    enabled: true
+    sample_rate: 1.0
+  logging:
+    format: "json"
+    include_request_body: false
+    include_response_body: false
+
+# Security Settings
+security:
+  # TLS Configuration
+  tls:
+    enabled: true
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+  
+  # mTLS for service-to-service
+  mtls:
+    enabled: true
+    ca_file: "/etc/csic/certs/ca.crt"
+  
+  # Encryption at rest
+  encryption:
+    algorithm: "AES-256-GCM"
+    key_rotation_period: "24h"
+
+# Health Check
+health:
+  endpoint: "/health"
+  readiness_endpoint: "/ready"
+  liveness_endpoint: "/live"
+  startup_probe_enabled: true

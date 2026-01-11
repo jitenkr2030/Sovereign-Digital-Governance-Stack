@@ -1,0 +1,338 @@
+# CSIC Licensing Service Configuration
+# This configuration file manages all settings for the Licensing & Compliance module
+# of the Crypto State Infrastructure Contractor (CSIC) Platform.
+
+# Application Configuration
+app:
+  name: "csic-licensing-service"
+  host: "0.0.0.0"
+  port: 8081
+  read_timeout: 30      # seconds
+  write_timeout: 30     # seconds
+  shutdown_timeout: 60  # seconds
+  mode: "release"       # debug, release, test
+  environment: "development"  # development, staging, production
+  version: "1.0.0"
+
+# PostgreSQL Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_admin"
+  password: "secure_password"
+  name: "csic_licensing"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 300  # minutes
+  migrations_path: "internal/db/migrations"
+  seed_data: true
+
+# Redis Cache Configuration
+cache:
+  host: "localhost"
+  port: 6379
+  password: ""
+  database: 0
+  pool_size: 100
+  min_idle_conn: 10
+  ttl: 3600             # seconds - default cache TTL
+  license_cache_ttl: 7200       # seconds - license data cache
+  compliance_cache_ttl: 1800    # seconds - compliance data cache
+  dashboard_cache_ttl: 300      # seconds - dashboard metrics cache
+
+# Kafka Configuration for Event Streaming
+kafka:
+  enabled: true
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-licensing-consumer"
+  topics:
+    license_events: "csic.license.events"
+    compliance_events: "csic.compliance.events"
+    regulatory_reports: "csic.regulatory.reports"
+    alerts: "csic.alerts"
+  producer:
+    required_acks: -1  # all
+    retry_max: 3
+    retry_backoff: 100 # milliseconds
+  consumer:
+    auto_offset_reset: "earliest"
+    enable_auto_commit: true
+    auto_commit_interval: 5000 # milliseconds
+    session_timeout: 30000     # milliseconds
+  tls:
+    enabled: false
+    skip_verify: false
+
+# Security Configuration
+security:
+  encryption:
+    algorithm: "aes-256-gcm"
+    key_path: "config/encryption.key"
+    key_rotation_days: 90
+  jwt:
+    secret_key: "your-super-secret-jwt-key-change-in-production"
+    expiration_hours: 24
+    issuer: "csic-platform"
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "PATCH"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-Request-ID"
+    max_age: 86400  # seconds
+
+# Logging Configuration
+logging:
+  level: "info"  # debug, info, warn, error, fatal, panic
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+  file_path: "logs/licensing-service.log"
+  file_max_size: 100   # MB
+  file_max_backups: 10
+  file_max_age: 30     # days
+  include_caller: true
+  development_mode: false
+
+# Monitoring and Observability Configuration
+monitoring:
+  enabled: true
+  metrics:
+    enabled: true
+    path: "/metrics"
+    port: 9091
+  health:
+    enabled: true
+    path: "/health"
+    check_interval: 30  # seconds
+    timeout: 10         # seconds
+  tracing:
+    enabled: false
+    service_name: "csic-licensing-service"
+    exporter: "jaeger"
+    endpoint: "http://localhost:14268/api/traces"
+    sample_rate: 1.0
+  profiling:
+    enabled: true
+    path: "/debug/pprof"
+    port: 6060
+  alertmanager:
+    enabled: false
+    url: "http://localhost:9093"
+    rules_path: "config/prometheus/alerts.yml"
+
+# API Configuration
+api:
+  versioning:
+    enabled: true
+    prefix: "v1"
+  pagination:
+    default_page_size: 20
+    max_page_size: 100
+  request_validation:
+    strict_mode: true
+    max_request_size: 10  # MB
+  response:
+    include_metadata: true
+    include_request_id: true
+
+# Licensing Module Configuration
+licensing:
+  # License number generation settings
+  license_number_prefix: "CSIC"
+  license_number_format: "CSIC-{YEAR}-{TYPE}-{SEQUENCE}"
+  auto_renewal:
+    enabled: true
+    reminder_days: 90
+    grace_period_days: 30
+  expiration_monitoring:
+    enabled: true
+    check_interval: 3600  # seconds
+    warning_days: [90, 60, 30, 14, 7, 1]
+  application_processing:
+    default_review_days: 30
+    expedited_review_days: 7
+    max_concurrent_reviews: 100
+
+# Compliance Module Configuration
+compliance:
+  risk_scoring:
+    algorithm: "weighted_average"
+    weights:
+      violation_history: 0.30
+      regulatory_filings: 0.25
+      transaction_patterns: 0.20
+      audit_findings: 0.15
+      market_indicators: 0.10
+    thresholds:
+      low_risk: 25
+      medium_risk: 50
+      high_risk: 75
+      critical_risk: 90
+  assessment_frequency:
+    default: "quarterly"
+    high_risk: "monthly"
+    low_risk: "annually"
+  violation_tracking:
+    auto_escalation: true
+    escalation_rules:
+      - severity: "critical"
+        escalate_after_hours: 4
+        escalate_to: "regulatory_manager"
+      - severity: "high"
+        escalate_after_hours: 24
+        escalate_to: "compliance_officer"
+      - severity: "medium"
+        escalate_after_hours: 72
+        escalate_to: "compliance_officer"
+      - severity: "low"
+        escalate_after_hours: 168
+        escalate_to: "compliance_team"
+
+# Reporting Module Configuration
+reporting:
+  automated_reporting:
+    enabled: true
+    schedule:
+      daily_reports: "0 6 * * *"      # 6 AM daily
+      weekly_reports: "0 6 * * 1"     # 6 AM Monday
+      monthly_reports: "0 6 1 * *"    # 6 AM 1st of month
+      quarterly_reports: "0 6 1 1,4,7,10 *"  # 6 AM 1st of quarter
+    retention:
+      draft_days: 30
+      submitted_days: 365
+      approved_years: 7
+  sar_processing:
+    default_filing_deadline_hours: 30
+    expedited_filing_deadline_hours: 6
+    auto_detection_enabled: true
+  report_templates:
+    path: "config/report_templates"
+    format: "pdf"
+  regulatory_filing:
+    supported_authorities:
+      - "FINMA"
+      - "FCA"
+      - "CFTC"
+      - "SEC"
+      - "BaFin"
+      - "ACPR"
+      - "AMF"
+      - "CONSOB"
+      - "CMVM"
+    filing_hours:
+      start: "08:00"
+      end: "18:00"
+    timezone: "Europe/Zurich"
+
+# Dashboard Module Configuration
+dashboard:
+  refresh_interval: 300  # seconds
+  data_retention_days: 365
+  metrics:
+    license_metrics:
+      - "total_licenses"
+      - "active_licenses"
+      - "pending_applications"
+      - "expiring_licenses"
+      - "suspended_licenses"
+      - "revoked_licenses"
+    compliance_metrics:
+      - "compliance_rate"
+      - "violation_count"
+      - "open_investigations"
+      - "enforcement_actions"
+    reporting_metrics:
+      - "reports_submitted"
+      - "reports_pending"
+      - "overdue_reports"
+      - "sar_filings"
+    risk_metrics:
+      - "average_risk_score"
+      - "high_risk_entities"
+      - "risk_trend"
+  charts:
+    license_trend: true
+    compliance_distribution: true
+    risk_heatmap: true
+    geographic_distribution: true
+    temporal_analysis: true
+
+# External Services Integration
+integrations:
+  external_apis:
+    - name: "sanctions_checker"
+      enabled: true
+      endpoint: "https://api.sanctions-checker.example.com"
+      timeout: 5000  # milliseconds
+      retry_count: 3
+    - name: "identity_verification"
+      enabled: true
+      endpoint: "https://api.identity-verify.example.com"
+      timeout: 10000 # milliseconds
+      retry_count: 3
+    - name: "blockchain_analysis"
+      enabled: true
+      endpoint: "https://api.blockchain-analytics.example.com"
+      timeout: 15000 # milliseconds
+      retry_count: 3
+  webhook:
+    enabled: true
+    events:
+      - "license_status_change"
+      - "compliance_violation"
+      - "report_submitted"
+      - "regulatory_update"
+    retry_policy:
+      max_attempts: 5
+      backoff_multiplier: 2
+      initial_delay: 1000  # milliseconds
+
+# Data Import/Export Configuration
+data_management:
+  import:
+    batch_size: 1000
+    supported_formats:
+      - "csv"
+      - "xlsx"
+      - "json"
+    validation_strict: true
+  export:
+    batch_size: 10000
+    supported_formats:
+      - "csv"
+      - "xlsx"
+      - "json"
+      - "pdf"
+    include_audit_trail: true
+  backup:
+    enabled: true
+    schedule: "0 2 * * 0"  # 2 AM Sunday
+    retention: 30  # days
+    compression: true
+    encryption: true
+
+# Feature Flags for Gradual Rollout
+features:
+  automated_compliance_scoring: true
+  predictive_analytics: false
+  ai_assisted_review: false
+  blockchain_integration: true
+  multi_jurisdiction_support: true
+  real_time_monitoring: true
+  regulatory_change_alerts: true
+  external_api_caching: true

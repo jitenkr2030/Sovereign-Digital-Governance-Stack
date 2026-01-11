@@ -1,0 +1,23 @@
+# Grafana Provisioning for CSIC Reporting Service
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+    editable: false
+    version: 1
+
+dashboards:
+  - folder: CSIC Reporting
+    name: Service Overview
+    uid: csic-reporting-overview
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/reporting-overview.json
+    datasource: Prometheus

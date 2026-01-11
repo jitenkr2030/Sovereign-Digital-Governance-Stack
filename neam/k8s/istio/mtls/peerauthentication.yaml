@@ -1,0 +1,272 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: istio-system
+  labels:
+    app: istio-controlplane
+    version: v1
+  annotations:
+    description: "Default STRICT mTLS policy for the entire mesh"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-permissive
+  namespace: default
+  labels:
+    app: kubernetes
+    version: v1
+  annotations:
+    description: "Default STRICT mTLS policy for default namespace"
+spec:
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "15021":  # istio-ingressgateway health check
+      mode: PERMISSIVE
+    "15020":  # istiod proxy
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-production
+  namespace: production
+  labels:
+    app: kubernetes
+    environment: production
+  annotations:
+    description: "STRICT mTLS for production namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-staging
+  namespace: staging
+  labels:
+    app: kubernetes
+    environment: staging
+  annotations:
+    description: "STRICT mTLS for staging namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-development
+  namespace: development
+  labels:
+    app: kubernetes
+    environment: development
+  annotations:
+    description: "STRICT mTLS for development namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-monitoring
+  namespace: monitoring
+  labels:
+    app: monitoring
+  annotations:
+    description: "STRICT mTLS for monitoring namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-data
+  namespace: data
+  labels:
+    app: data-services
+  annotations:
+    description: "STRICT mTLS for data namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-finance
+  namespace: finance
+  labels:
+    app: finance-services
+  annotations:
+    description: "STRICT mTLS for finance namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-intelligence
+  namespace: intelligence
+  labels:
+    app: intelligence-services
+  annotations:
+    description: "STRICT mTLS for intelligence namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-core
+  namespace: core
+  labels:
+    app: core-services
+  annotations:
+    description: "STRICT mTLS for core namespace"
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: spire
+  labels:
+    app: spire
+    tier: infrastructure
+  annotations:
+    description: "Default deny policy for spire namespace"
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-spire-server
+  namespace: spire
+  labels:
+    app: spire
+    tier: infrastructure
+  annotations:
+    description: "Allow spire-server to receive connections"
+spec:
+  selector:
+    matchLabels:
+      app: spire-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/spire-agent/*"]
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/spire-server"]
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-spire-agent
+  namespace: spire
+  labels:
+    app: spire
+    tier: infrastructure
+  annotations:
+    description: "Allow spire-agent to communicate with server"
+spec:
+  selector:
+    matchLabels:
+      app: spire-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/spire-agent/node-*"]
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: istio-mtls-dr
+  namespace: istio-system
+  labels:
+    app: istio-controlplane
+  annotations:
+    description: "Enable ISTIO_MUTUAL TLS for all services"
+spec:
+  host: "*.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+      sni: dynamic
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: default-mtls-destination
+  namespace: default
+  labels:
+    app: kubernetes
+  annotations:
+    description: "Default mTLS destination rule for mesh services"
+spec:
+  host: "*.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+      sni: "*.svc.cluster.local"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: postgres-mtls
+  namespace: data
+  labels:
+    app: database
+  annotations:
+    description: "mTLS destination rule for PostgreSQL"
+spec:
+  host: "postgres.data.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+      sni: "postgres.data.svc.cluster.local"
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h2UpgradePolicy: UPGRADE
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: redis-mtls
+  namespace: data
+  labels:
+    app: cache
+  annotations:
+    description: "mTLS destination rule for Redis"
+spec:
+  host: "redis-cache.data.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+      sni: "redis-cache.data.svc.cluster.local"
+    connectionPool:
+      tcp:
+        maxConnections: 1000

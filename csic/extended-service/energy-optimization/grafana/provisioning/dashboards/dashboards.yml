@@ -1,0 +1,12 @@
+# Grafana Dashboards Provisioning Configuration
+
+apiVersion: 1
+
+providers:
+  - name: 'Energy Optimization Dashboards'
+    type: file
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

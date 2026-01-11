@@ -1,0 +1,279 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: spire
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: spire
+  labels:
+    app: spire-server
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 2112
+      targetPort: 2112
+      protocol: TCP
+  selector:
+    app: spire-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server-headless
+  namespace: spire
+  labels:
+    app: spire-server
+spec:
+  clusterIP: None
+  ports:
+    - name: api
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: spire-server
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spire-server
+  namespace: spire
+  labels:
+    app: spire-server
+    tier: infrastructure
+  annotations:
+    description: "SPIRE Server StatefulSet for workload identity management"
+spec:
+  serviceName: spire-server-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: spire-server
+  template:
+    metadata:
+      labels:
+        app: spire-server
+        tier: infrastructure
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2112"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: spire-server
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 30
+      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: spire-server
+          image: gcr.io/spiffe-io/spire-server:1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /run/spire/server/config/spire-server.conf
+          ports:
+            - name: api
+              containerPort: 8081
+              protocol: TCP
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 2112
+              protocol: TCP
+
+          env:
+            - name: SPIRE_SERVER_DATABASE_URL
+              value: "sqlite3:///run/spire/server/data/datastore.sqlite3?cache=shared&mode=rwc"
+            - name: SPIRE_SERVER_LOG_LEVEL
+              value: "INFO"
+            - name: SPIRE_SERVER_TRUST_DOMAIN
+              value: "neam.internal"
+            - name: SPIRE_SERVER_CLUSTER_NAME
+              value: "neam-cluster"
+
+          volumeMounts:
+            - name: server-config
+              mountPath: /run/spire/server/config
+              readOnly: true
+            - name: server-data
+              mountPath: /run/spire/server/data
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+            - name: uptime
+              mountPath: /run/uptime
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 2
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: server-config
+          configMap:
+            name: spire-server-config
+        - name: uptime
+          emptyDir: {}
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: spire-server
+              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: spire-server
+                topologyKey: topology.kubernetes.io/zone
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: spire-server
+
+  volumeClaimTemplates:
+    - metadata:
+        name: server-data
+        labels:
+          app: spire-server
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: fast-regional
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: spire-server
+  namespace: spire
+  labels:
+    app: spire-server
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: spire-server
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server
+  labels:
+    app: spire-server
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "get", "list", "watch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server
+  labels:
+    app: spire-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-server
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-server
+  namespace: spire
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-server
+  namespace: spire
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spire-server
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire

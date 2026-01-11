@@ -1,0 +1,327 @@
+# Default values for sensing service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "sensing"
+fullnameOverride: "neam-sensing"
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: neam-platform/sensing
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-sensing"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-sensing-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "2112"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "abc123"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 2112
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-sensing"
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector:4317"
+  - name: OTEL_METRICS_EXPORTER
+    value: "otlp"
+
+envFrom:
+  - secretRef:
+      name: sensing-secrets
+  - configMapRef:
+      name: sensing-config
+
+command:
+  - "/sensing"
+args:
+  - "--config"
+  - "/etc/sensing/config.yaml"
+  - "--metrics-port"
+  - "2112"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/sensing
+    readOnly: true
+  - name: tmp
+    mountPath: /tmp
+
+volumes:
+  - name: config
+    configMap:
+      name: sensing-config
+  - name: tmp
+    emptyDir: {}
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: true
+  path: /health/startup
+  port: 8080
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+# Resources
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "2112"
+  portMappings:
+    http:
+      port: 8080
+    grpc:
+      port: 9090
+    metrics:
+      port: 2112
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  hosts:
+    - host: sensing.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - sensing.example.com
+      secretName: sensing-tls
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      # Sensing service configuration
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+        metrics_port: 2112
+      
+      sensing:
+        batch_size: 100
+        batch_timeout: 5s
+        max_retries: 3
+        retry_delay: 1s
+      
+      kafka:
+        brokers:
+          - kafka:9092
+        topic: sensing.ingest
+        consumer_group: sensing-group
+      
+      schema_registry:
+        url: http://schema-registry:8081
+        cache_ttl: 5m
+      
+      data_quality:
+        enabled: true
+        score_threshold: 80
+        anomaly_detection: true
+        anomaly_threshold: 3.0
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: sensing
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: sensing
+
+nodeSelector:
+  node-type: compute
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - sensing
+          topologyKey: kubernetes.io/hostname
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 10
+        preference:
+          matchExpressions:
+            - key: node-type
+              operator: In
+              values:
+                - compute
+
+tolerations:
+  - key: "compute"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+terminationGracePeriodSeconds: 60
+
+priorityClassName: high-priority
+
+dnsPolicy: ClusterFirst
+
+dnsConfig:
+  nameservers:
+    - 8.8.8.8
+  searches:
+    - default.svc.cluster.local
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

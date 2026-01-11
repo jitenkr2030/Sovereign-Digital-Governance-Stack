@@ -1,0 +1,589 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zero-trust-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  zero-trust-overview.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "panels": [],
+          "title": "SPIRE Identity Infrastructure",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "green", "value": 3 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "count(up{job=\"spire-server\"})",
+              "legendFormat": "SPIRE Servers",
+              "refId": "A"
+            }
+          ],
+          "title": "SPIRE Servers Running",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 90 },
+                  { "color": "green", "value": 100 }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "((count(up{job=\"spire-agent\"}) / count(kube_node_labels{label_node_role_kubernetes_io_worker!=\"\"})) * 100)",
+              "legendFormat": "Agent Coverage",
+              "refId": "A"
+            }
+          ],
+          "title": "SPIRE Agent Coverage",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 1000 },
+                  { "color": "green", "value": 5000 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(spiffe_svids_issued)",
+              "legendFormat": "SVIDs Issued",
+              "refId": "A"
+            }
+          ],
+          "title": "Total SVIDs Issued",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.9 },
+                  { "color": "green", "value": 0.95 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+          "id": 5,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "rate(spiffe_attestation_success[5m]) / rate(spiffe_attestation_total[5m])",
+              "legendFormat": "Attestation Success Rate",
+              "refId": "A"
+            }
+          ],
+          "title": "Attestation Success Rate",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "id": 6,
+          "panels": [],
+          "title": "mTLS Compliance",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 90 },
+                  { "color": "green", "value": 100 }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 8, "x": 0, "y": 6 },
+          "id": 7,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "(sum(istio_tcp_connections_opened_total{reporter=\"destination\"}) / sum(istio_tcp_connections_opened_total)) * 100",
+              "legendFormat": "mTLS Coverage",
+              "refId": "A"
+            }
+          ],
+          "title": "mTLS Coverage",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 6 },
+          "id": 8,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_tcp_connections_opened_total{reporter=\"destination\"}[5m])) by (source_workload)",
+              "legendFormat": "{{source_workload}}",
+              "refId": "A"
+            }
+          ],
+          "title": "mTLS Connections by Source",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+          "id": 9,
+          "panels": [],
+          "title": "Network Policy Enforcement",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+          "id": 10,
+          "options": {
+            "legend": { "displayMode": "table", "placement": "right", "showLegend": true },
+            "pieType": "pie",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(calico_v3_policy_allowed_ingress_packets[5m])) by (action)",
+              "legendFormat": "{{action}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Policy Actions (Ingress)",
+          "type": "piechart"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 15 },
+          "id": 11,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(calico_v3_policy_allowed_egress_packets[5m])) by (namespace)",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Egress Traffic by Namespace",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+          "id": 12,
+          "panels": [],
+          "title": "Security Events",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 10 },
+                  { "color": "green", "value": 0 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+          "id": 13,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_tcp_mcx_denied_connections[5m]))",
+              "legendFormat": "Denied Connections",
+              "refId": "A"
+            }
+          ],
+          "title": "mTLS Denied Connections",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 5 },
+                  { "color": "green", "value": 1 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
+          "id": 14,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(calico_v3_policy_dropped_packets[5m]))",
+              "legendFormat": "Dropped Packets",
+              "refId": "A"
+            }
+          ],
+          "title": "Network Policy Drops",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.1 },
+                  { "color": "green", "value": 0.01 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 24 },
+          "id": 15,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(spiffe_attestation_failure[5m])) / sum(rate(spiffe_attestation_total[5m]))",
+              "legendFormat": "Attestation Failure Rate",
+              "refId": "A"
+            }
+          ],
+          "title": "Attestation Failure Rate",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 86400 },
+                  { "color": "green", "value": 43200 }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 24 },
+          "id": 16,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "min(spiffe_svid_expiry_timestamp - time())",
+              "legendFormat": "Min Certificate TTL",
+              "refId": "A"
+            }
+          ],
+          "title": "Min Certificate TTL",
+          "type": "stat"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["zero-trust", "security", "spire", "istio", "calico"],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Zero Trust Security Overview",
+      "uid": "zero-trust-overview",
+      "version": 1,
+      "weekStart": ""
+    }

@@ -1,0 +1,121 @@
+# Wallet Governance Service Configuration
+# Crypto State Infrastructure Contractor (CSIC) Platform
+
+# Application Configuration
+app:
+  name: "csic-wallet-governance"
+  environment: "development"
+  version: "1.0.0"
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8084
+  read_timeout: 15
+  write_timeout: 15
+  idle_timeout: 60
+
+# Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_wallet"
+  password: "wallet_password"
+  name: "csic_wallet"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Redis Configuration
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  key_prefix: "csic:wallet:"
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic_prefix: "csic.wallet."
+  consumer_group: "wallet-workers"
+  topics:
+    transactions: "wallet.transactions"
+    freezes: "wallet.freezes"
+    signatures: "wallet.signatures"
+    alerts: "wallet.alerts"
+
+# HSM Configuration
+hsm:
+  enabled: true
+  provider: "soft"  # "pkcs11", "soft", "cloud"
+  endpoint: ""
+  slot_id: 0
+  pin: "12345678"
+  key_label: "csic-wallet-signer"
+  timeout: 30
+
+# Governance Configuration
+governance:
+  min_signers: 2
+  default_threshold: 2
+  transaction_expiry_hours: 24
+  max_pending_transactions: 100
+  emergency_signer_required: true
+  emergency_threshold: 1
+
+# Signing Configuration
+signing:
+  timeout_seconds: 300
+  retry_attempts: 3
+  require_multi_sig: true
+  allow_partial_sign: false
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  include_caller: true
+  fields:
+    service: "wallet-governance"
+    environment: "development"
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9094
+  prefix: "csic_wallet"
+
+# Security Configuration
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 20
+
+  cors:
+    enabled: true
+    allowed_origins:
+      - "https://admin.csic.gov"
+      - "https://dashboard.csic.gov"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "PATCH"
+      - "DELETE"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-Request-ID"
+    max_age: 86400

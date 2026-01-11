@@ -1,0 +1,111 @@
+# National Identity Service Configuration
+
+# Application Settings
+app:
+  name: "national-identity-service"
+  host: "0.0.0.0"
+  port: 8086
+  environment: "production"
+  log_level: "info"
+
+# Database Configuration
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_platform"
+  schema: "identity"
+  max_open_conns: 100
+  max_idle_conns: 25
+  conn_max_lifetime: "5m"
+
+# Redis Configuration
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:identity:"
+  pool_size: 50
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "csic-identity-service"
+  topics:
+    events: "identity.events"
+    verifications: "identity.verifications"
+    fraud_alerts: "identity.fraud_alerts"
+    model_updates: "identity.model_updates"
+
+# Identity Service Settings
+identity:
+  # Fraud detection thresholds
+  fraud_score_threshold: 85
+  velocity_check_window: "1h"
+  max_login_attempts: 5
+  lockout_duration: "30m"
+  
+  # Behavioral analysis
+  behavioral:
+    baseline_window: "30d"
+    anomaly_detection_sensitivity: "high"  # low, medium, high
+    keystroke_analysis_enabled: true
+    mouse_pattern_analysis_enabled: true
+  
+  # Federated learning
+  federated_learning:
+    enabled: true
+    round_interval: "6h"
+    min_clients_per_round: 10
+    model_aggregation_strategy: "secure_mean"
+  
+  # Biometric settings
+  biometric:
+    required_factors: 2
+    liveness_check_enabled: true
+    spoofing_detection_enabled: true
+    max_retry_attempts: 3
+
+# Privacy Settings
+privacy:
+  data_retention: "7y"
+  pii_encryption: true
+  anonymization_enabled: true
+  consent_required: true
+  gdpr_compliance: true
+
+# API Rate Limiting
+rate_limit:
+  enabled: true
+  requests_per_minute: 100
+  burst_size: 20
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+  tracing:
+    enabled: true
+    sample_rate: 1.0
+  logging:
+    format: "json"
+
+# Security Settings
+security:
+  tls:
+    enabled: true
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+  mtls:
+    enabled: true
+    ca_file: "/etc/csic/certs/ca.crt"
+
+# Health Check
+health:
+  endpoint: "/health"
+  readiness_endpoint: "/ready"
+  liveness_endpoint: "/live"

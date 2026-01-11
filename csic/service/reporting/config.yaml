@@ -1,0 +1,122 @@
+# CSIC Reporting Service Configuration
+# This configuration file manages all settings for the Regulatory Reporting module
+# of the Crypto State Infrastructure Contractor (CSIC) Platform.
+
+# Application Configuration
+app:
+  name: "csic-reporting-service"
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30      # seconds
+  write_timeout: 30     # seconds
+  shutdown_timeout: 60  # seconds
+  mode: "release"       # debug, release, test
+  environment: "development"  # development, staging, production
+  version: "1.0.0"
+
+# PostgreSQL Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_admin"
+  password: "secure_password"
+  name: "csic_reporting"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 300  # minutes
+  migrations_path: "internal/db/migrations"
+
+# Redis Cache Configuration
+cache:
+  host: "localhost"
+  port: 6379
+  password: ""
+  database: 0
+  pool_size: 100
+  ttl: 3600             # seconds - default cache TTL
+  report_cache_ttl: 300 # seconds - generated reports cache
+  template_cache_ttl: 7200  # seconds - templates cache
+
+# Kafka Configuration for Event Streaming
+kafka:
+  enabled: true
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-reporting-consumer"
+  topic_prefix: "csic"
+  topics:
+    report_generated: "csic_report_generated"
+    report_failed: "csic_report_failed"
+    report_scheduled: "csic_report_scheduled"
+    export_audit: "csic_export_audit"
+
+# Security Configuration
+security:
+  encryption_enabled: true
+  default_algorithm: "aes256"
+  max_download_count: 10
+  default_expiry_hours: 24
+  require_auth: true
+  watermark_enabled: true
+  watermark_text: "CONFIDENTIAL - FOR AUTHORIZED USE ONLY"
+
+# Logging Configuration
+logging:
+  level: "info"  # debug, info, warn, error, fatal, panic
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+  file_path: "logs/reporting-service.log"
+
+# Report Generation Settings
+reporting:
+  generation:
+    timeout: 300  # seconds
+    max_retries: 3
+    retry_delay: 60  # seconds
+  storage:
+    type: "local"  # local, s3, gcs
+    base_path: "/tmp/reports"
+    max_file_size_mb: 500
+  formats:
+    - "pdf"
+    - "csv"
+    - "xlsx"
+    - "json"
+
+# Scheduler Settings
+scheduler:
+  enabled: true
+  timezone: "UTC"
+  catch_up: true  # run missed schedules
+  max_concurrent: 5
+
+# Export Settings
+export:
+  max_file_size_mb: 100
+  allowed_formats:
+    - "pdf"
+    - "csv"
+    - "xlsx"
+    - "json"
+  encryption:
+    enabled: true
+    algorithm: "aes256"
+    key_size: 256
+  audit:
+    enabled: true
+    retention_days: 365
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  metrics:
+    enabled: true
+    path: "/metrics"
+    port: 9090
+  health:
+    enabled: true
+    path: "/health"
+  tracing:
+    enabled: false
+    service_name: "csic-reporting-service"

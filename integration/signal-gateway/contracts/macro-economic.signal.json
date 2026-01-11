@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sdgs.local/signals/contracts/macro-economic.signal.json",
+  "title": "Macro-Economic Signal Contract",
+  "description": "Contract for signals transmitted from NEAM to CSIC regarding economic activity and conditions",
+  "type": "object",
+  "properties": {
+    "signalId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this signal instance"
+    },
+    "signalType": {
+      "type": "string",
+      "enum": ["activity-index", "sector-performance", "black-economy", "labor-market", "energy-consumption"],
+      "description": "Category of macro-economic signal"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the signal was generated"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "enum": ["neam-indicators", "neam-sector", "neam-labor", "neam-energy", "neam-shadow"]
+        },
+        "component": {
+          "type": "string",
+          "description": "Specific component that generated the signal"
+        }
+      },
+      "required": ["system"]
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["public", "internal", "sensitive", "restricted"],
+      "default": "sensitive"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "indicatorType": {
+          "type": "string",
+          "description": "Specific economic indicator being reported"
+        },
+        "indicatorValue": {
+          "type": "number",
+          "description": "Current value of the indicator"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement"
+        },
+        "referencePeriod": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date"
+            },
+            "end": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "description": "Period covered by the indicator"
+        },
+        "periodicity": {
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly", "quarterly", "annual"],
+          "description": "Frequency of indicator updates"
+        },
+        "comparisons": {
+          "type": "object",
+          "properties": {
+            "previousPeriod": {
+              "type": "number",
+              "description": "Value in the previous period"
+            },
+            "previousYear": {
+              "type": "number",
+              "description": "Value in the same period last year"
+            },
+            "changePercentage": {
+              "type": "number",
+              "description": "Percentage change from previous period"
+            },
+            "yearOverYearChange": {
+              "type": "number",
+              "description": "Year-over-year percentage change"
+            }
+          }
+        },
+        "sectorBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sectorCode": {
+                "type": "string",
+                "description": "Industry sector code (ISIC or equivalent)"
+              },
+              "sectorName": {
+                "type": "string",
+                "description": "Human-readable sector name"
+              },
+              "contribution": {
+                "type": "number",
+                "description": "Sector contribution to overall indicator"
+              },
+              "performance": {
+                "type": "string",
+                "enum": ["declining", "stable", "growing", "accelerating", "decelerating"]
+              }
+            },
+            "required": ["sectorCode", "sectorName"]
+          },
+          "description": "Breakdown by economic sector"
+        },
+        "regionalBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "regionCode": {
+                "type": "string",
+                "description": "Geographic region code"
+              },
+              "regionName": {
+                "type": "string",
+                "description": "Human-readable region name"
+              },
+              "value": {
+                "type": "number",
+                "description": "Indicator value for the region"
+              },
+              "deviationFromNational": {
+                "type": "number",
+                "description": "Percentage deviation from national average"
+              }
+            },
+            "required": ["regionCode", "regionName"]
+          },
+          "description": "Breakdown by geographic region"
+        },
+        "trendAssessment": {
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string",
+              "enum": ["upward", "downward", "stable", "uncertain"]
+            },
+            "strength": {
+              "type": "string",
+              "enum": ["weak", "moderate", "strong"]
+            },
+            "momentum": {
+              "type": "string",
+              "enum": ["accelerating", "maintaining", "decelerating"]
+            },
+            "outlook": {
+              "type": "string",
+              "enum": ["positive", "neutral", "negative"]
+            }
+          },
+          "description": "Assessment of indicator trend"
+        },
+        "anomalyIndicators": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "anomalyType": {
+                "type": "string",
+                "enum": ["statistical-outlier", "structural-break", "seasonality-change", "volatility-spike"]
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["minor", "moderate", "significant", "major"]
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the anomaly"
+              },
+              "detectedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "description": "Any anomalies detected in the data"
+        },
+        "dataQuality": {
+          "type": "object",
+          "properties": {
+            "completeness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Percentage of expected data received"
+            },
+            "reliability": {
+              "type": "string",
+              "enum": ["provisional", "revised", "final"],
+              "description": "Reliability status of the indicator"
+            },
+            "confidenceInterval": {
+              "type": "object",
+              "properties": {
+                "lower": {
+                  "type": "number"
+                },
+                "upper": {
+                  "type": "number"
+                }
+              },
+              "description": "95% confidence interval"
+            }
+          }
+        },
+        "implications": {
+          "type": "object",
+          "properties": {
+            "financialRiskFactors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Financial risk factors indicated by the data"
+            },
+            "sectorConcerns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Sectors requiring attention"
+            },
+            "policyRelevance": {
+              "type": "string",
+              "enum": ["low", "medium", "high"],
+              "description": "Relevance to policy decisions"
+            }
+          },
+          "description": "Implications for financial surveillance"
+        },
+        "relatedSignals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "IDs of related signals for correlation"
+        }
+      },
+      "required": ["indicatorType", "indicatorValue", "referencePeriod"]
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "processingHints": {
+          "type": "object",
+          "properties": {
+            "priority": {
+              "type": "string",
+              "enum": ["routine", "priority", "urgent", "critical"]
+            },
+            "responseDeadline": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "requiredExpertise": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "updateFrequency": {
+              "type": "string",
+              "description": "Expected frequency of updates for this indicator"
+            }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "generatorId": {
+              "type": "string"
+            },
+            "reviewerId": {
+              "type": "string"
+            },
+            "approvalTimestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Source systems providing input data"
+            }
+          }
+        }
+      },
+      "required": ["version"]
+    }
+  },
+  "required": ["signalId", "signalType", "timestamp", "source", "classification", "payload"]
+}

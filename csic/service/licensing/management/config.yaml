@@ -1,0 +1,171 @@
+# Licensing Management Service Configuration
+# CSIC Platform - VASP/CASP Licensing and Compliance
+
+app:
+  name: "licensing-management-service"
+  environment: "development"
+  version: "1.0.0"
+
+server:
+  host: "0.0.0.0"
+  port: 3000
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120
+
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "change_me_in_production"
+  name: "csic_licensing"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  key_prefix: "csic:licensing:"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  client_id: "licensing-service"
+  group_id: "licensing-consumer-group"
+  topics:
+    application_submitted: "license.application.submitted"
+    application_approved: "license.application.approved"
+    application_rejected: "license.application.rejected"
+    license_issued: "license.issued"
+    license_expiring: "license.expiring"
+    license_expired: "license.expired"
+    license_suspended: "license.suspended"
+    license_revoked: "license.revoked"
+
+storage:
+  provider: "s3"
+  s3:
+    endpoint: "http://localhost:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    bucket: "csic-documents"
+    region: "us-east-1"
+    signed_url_expiry: 3600
+
+workflow:
+  # Workflow configuration
+  states:
+    - "DRAFT"
+    - "SUBMITTED"
+    - "UNDER_REVIEW"
+    - "PENDING_INFO"
+    - "APPROVED"
+    - "REJECTED"
+    - "RENEWAL_WINDOW"
+    - "RENEWAL_IN_PROGRESS"
+    - "SUSPENDED"
+    - "EXPIRED"
+    - "REVOKED"
+
+renewal:
+  # Renewal alert configuration (days before expiry)
+  alert_days:
+    - 90
+    - 60
+    - 30
+    - 14
+    - 7
+    - 1
+  # Auto-suspend after expiry (hours)
+  auto_suspend_hours: 24
+  # Renewal window start (days before expiry)
+  renewal_window_days: 90
+
+licensing:
+  # License types
+  types:
+    - id: "vasp"
+      name: "Virtual Asset Service Provider"
+      validity_months: 12
+      requirements:
+        - "proof_of_incorporation"
+        - "aml_kyc_policy"
+        - "business_plan"
+        - "financial_statements"
+        - "security_audit_report"
+    - id: "casp"
+      name: "Crypto Asset Service Provider"
+      validity_months: 12
+      requirements:
+        - "proof_of_incorporation"
+        - "aml_kyc_policy"
+        - "operational_reserve_proof"
+        - "security_audit_report"
+    - id: "exchange"
+      name: "Cryptocurrency Exchange"
+      validity_months: 12
+      requirements:
+        - "proof_of_incorporation"
+        - "aml_kyc_policy"
+        - "business_plan"
+        - "financial_statements"
+        - "security_audit_report"
+        - "cold_storage_policy"
+        - "insurance_proof"
+    - id: "wallet"
+      name: "Custodial Wallet Provider"
+      validity_months: 24
+      requirements:
+        - "proof_of_incorporation"
+        - "aml_kyc_policy"
+        - "security_audit_report"
+        - "custody_policy"
+    - id: "mining"
+      name: "Mining Pool Operator"
+      validity_months: 24
+      requirements:
+        - "proof_of_incorporation"
+        - "energy_source_documentation"
+        - "pool_software_security_audit"
+        - "geolocation_data"
+
+document:
+  # Maximum file sizes (MB)
+  max_file_size: 50
+  # Allowed file types
+  allowed_types:
+    - "application/pdf"
+    - "image/jpeg"
+    - "image/png"
+    - "application/msword"
+    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  # Quarantine period for verification (days)
+  quarantine_days: 7
+
+security:
+  jwt:
+    secret: "change_me_in_production_use_strong_secret"
+    expiry: "24h"
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 20
+
+logging:
+  level: "info"
+  format: "json"
+  include_caller: true
+  fields:
+    service: "licensing-management"
+    environment: "development"
+
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+  prefix: "csic_licensing"

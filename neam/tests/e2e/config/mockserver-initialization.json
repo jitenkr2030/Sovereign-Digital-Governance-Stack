@@ -1,0 +1,52 @@
+[
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/health"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": "{\"status\": \"healthy\", \"timestamp\": \"${NOW}\"}"
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/api/v1/auth/login"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": "{\"token\": \"mock-jwt-token-${UUID}\", \"user\": {\"id\": \"${3}\", \"email\": \"${1}\", \"role\": \"${2}\"}}"
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/intelligence"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": "{\"items\": [{\"id\": \"intel-001\", \"title\": \"Test Intelligence Item\", \"status\": \"pending\"}], \"total\": 1}"
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/api/v1/interventions"
+    },
+    "httpResponse": {
+      "statusCode": 201,
+      "body": "{\"id\": \"intervention-${UUID}\", \"status\": \"created\"}"
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/dashboard/stats"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": "{\"totalAlerts\": 5, \"pendingReview\": 3, \"criticalCases\": 2, \"resolvedToday\": 1}"
+    }
+  }
+]

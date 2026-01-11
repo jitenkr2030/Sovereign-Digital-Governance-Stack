@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  transport-adapter:
+    build:
+      context: ./transport
+      dockerfile: Dockerfile
+    image: neam/transport-adapter:latest
+    container_name: transport-adapter
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+      - "9092:9092"
+    environment:
+      - CONFIG_PATH=/etc/neam/config.yaml
+      - KAFKA_BROKERS=kafka:9092
+      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      - MQTT_CLIENT_ID=neam-transport-adapter
+      - MQTT_USERNAME=adapter
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      - MQTT_BROKER_URL_2=mqtt://transit-mqtt:1883
+      - MQTT_CLIENT_ID_2=neam-transit-adapter
+    volumes:
+      - ./transport/config.yaml:/etc/neam/config.yaml:ro
+      - transport-logs:/var/log/neam
+    depends_on:
+      - kafka
+      - mqtt-broker
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9092/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  transport-adapter-dashboard:
+    image: grafana/grafana:latest
+    container_name: transport-adapter-dashboard
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./transport/deployments/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  transport-logs:
+  grafana-storage:
+
+networks:
+  neam-network:
+    driver: bridge

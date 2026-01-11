@@ -1,0 +1,106 @@
+# Transaction Monitoring Engine Configuration
+
+# Server Configuration
+server:
+  http_port: 8080
+  read_timeout: 30      # seconds
+  write_timeout: 30     # seconds
+  idle_timeout: 120     # seconds
+
+# Database Configuration (PostgreSQL)
+database:
+  host: localhost
+  port: 5432
+  username: csic
+  password: ${DB_PASSWORD:csic_secret_password}
+  name: monitoring_db
+  ssl_mode: disable
+  max_open_connections: 25
+  max_idle_connections: 5
+  conn_max_lifetime: 300  # seconds
+
+# Redis Configuration (for caching and rate limiting)
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+# Risk Scoring Configuration
+risk_scoring:
+  # Amount thresholds for structuring detection
+  thresholds:
+    small: 1000
+    medium: 10000
+    large: 50000
+    very_large: 100000
+  
+  # Score weights
+  weights:
+    sanctions: 100
+    structuring: 50
+    wallet_age: 20
+    velocity: 15
+    mixing_pattern: 40
+  
+  # Auto-flag threshold
+  auto_flag_score: 80
+
+# Sanctions Configuration
+sanctions:
+  # Supported chains
+  supported_chains:
+    - bitcoin
+    - ethereum
+    - erc20
+    - tron
+  
+  # Default expiration (0 = never expires)
+  default_expiration_days: 0
+
+# Monitoring Configuration
+monitoring:
+  # Transaction processing
+  batch_size: 100
+  processing_interval: 1  # seconds
+  
+  # Alerting
+  alert_threshold: 80
+  notification_channels:
+    - email
+    - webhook
+
+# Logging Configuration
+logging:
+  level: info
+  format: json
+  output: stdout
+  
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: /metrics
+  prometheus:
+    enabled: true
+    port: 9090
+
+# Health Check Configuration
+health:
+  enabled: true
+  interval: 30  # seconds
+  timeout: 10   # seconds
+
+# Rate Limiting Configuration
+rate_limiting:
+  enabled: true
+  requests_per_minute: 100
+  burst_size: 20
+
+# API Configuration
+api:
+  version: v1
+  prefix: /api/v1
+  pagination:
+    default_page_size: 20
+    max_page_size: 100

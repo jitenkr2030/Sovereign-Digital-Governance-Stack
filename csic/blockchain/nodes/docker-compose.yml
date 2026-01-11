@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  nodes-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-blockchain-nodes
+    ports:
+      - "8081:8081"
+      - "9090:9090"
+    environment:
+      - CSIC_APP_HOST=0.0.0.0
+      - CSIC_APP_PORT=8081
+      - CSIC_DATABASE_HOST=database
+      - CSIC_REDIS_HOST=redis
+      - CSIC_KAFKA_BROKERS=kafka:9092
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - nodes-data:/app/data
+    depends_on:
+      - database
+      - redis
+      - kafka
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/api/v1/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  database:
+    image: postgres:14-alpine
+    container_name: csic-nodes-database
+    environment:
+      - POSTGRES_USER=csic
+      - POSTGRES_PASSWORD=csic_secret
+      - POSTGRES_DB=csic_nodes
+    volumes:
+      - postgres-nodes-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csic -d csic_nodes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: csic-nodes-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-nodes-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-nodes-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-nodes-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+volumes:
+  nodes-data:
+  postgres-nodes-data:
+  redis-nodes-data:
+
+networks:
+  csic-network:
+    driver: bridge

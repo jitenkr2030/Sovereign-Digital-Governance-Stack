@@ -1,0 +1,363 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire
+  labels:
+    app: spire-agent
+data:
+  spire-agent.conf: |
+    agent {
+      data_dir = "/run/spire/agent/data"
+      log_level = "INFO"
+      server_address = "spire-server"
+      server_port = "8081"
+      socket_path = "/run/spire/agent/public/api.sock"
+      trust_bundle_path = "/run/spire/bundle/bundle.crt"
+      trust_domain = "neam.internal"
+
+      # Security settings
+      ifmatch = {
+        enabled = true
+        action = "log"
+      }
+    }
+
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "neam-cluster"
+          socket_path = "/run/spire/agent/public/api.sock"
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          keys_file = "/run/spire/agent/data/keys.json"
+        }
+      }
+
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          enabled = true
+          max_workers = 100
+          kubeconfig_file = "/run/spire/agent/kubeconfig"
+        }
+      }
+
+      WorkloadAttestor "unix" {
+        plugin_data {
+          enabled = true
+        }
+      }
+    }
+
+    health_checks {
+      enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+    }
+
+    telemetry {
+      prometheus {
+        enabled = true
+        port = 2112
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-kubeconfig
+  namespace: spire
+  labels:
+    app: spire-agent
+data:
+  kubeconfig: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - name: default
+      cluster:
+        server: https://kubernetes.default.svc
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    contexts:
+    - name: default
+      context:
+        cluster: default
+        user: default
+    current-context: default
+    users:
+    - name: default
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire
+  labels:
+    app: spire
+    tier: infrastructure
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: spire
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent-runner
+  namespace: spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-bootstrap
+  namespace: spire
+data:
+  # Default registration entries for agent workloads
+  # These will be augmented by namespace-specific entries
+  bootstrap-entries.conf: |
+    # Agent bootstrap entries - minimal set for core platform functions
+
+    # Node-level agent identity
+    - spiffe_id: "spiffe://neam.internal/spire-agent/node-$(NODE_NAME)"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:spire
+        - k8s:sa:spire-agent
+        - k8s:node-name:$(NODE_NAME)
+      ttl: "72h"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-agent
+  labels:
+    app: spire-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "get", "list", "watch", "update"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-agent
+  labels:
+    app: spire-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-agent
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-runner-scripts
+  namespace: spire
+data:
+  entry-registration.sh: |
+    #!/bin/bash
+    # Script to register workload entries with SPIRE Server
+    # Usage: ./entry-registration.sh <entry-config-map>
+
+    set -euo pipefail
+
+    ENTRY_CONFIG="${1:-entry.conf}"
+    SERVER_ENDPOINT="spire-server:8081"
+
+    echo "Registering entries from ${ENTRY_CONFIG}..."
+
+    # Wait for SPIRE server to be ready
+    until curl -sf http://${SERVER_ENDPOINT}/api/agent/healthcheck > /dev/null 2>&1; do
+      echo "Waiting for SPIRE server..."
+      sleep 5
+    done
+
+    # Read and process entries
+    if [[ -f "/entries/${ENTRY_CONFIG}" ]]; then
+      yq eval '.[] | "Entry: \(.spiffe_id)"' "/entries/${ENTRY_CONFIG}" || true
+      echo "Entry registration initiated"
+    else
+      echo "Entry config not found, skipping registration"
+    fi
+
+    echo "Entry registration complete"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire
+  labels:
+    app: spire-agent
+    tier: infrastructure
+  annotations:
+    description: "SPIRE Agent DaemonSet for workload identity attestation"
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+        tier: infrastructure
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2112"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: spire-agent
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirst
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: spire-agent
+          image: gcr.io/spiffe-io/spire-agent:1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /run/spire/agent/config/spire-agent.conf
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 2112
+              protocol: TCP
+
+          env:
+            - name: SPIRE_AGENT_LOG_LEVEL
+              value: "INFO"
+            - name: SPIRE_AGENT_TRUST_DOMAIN
+              value: "neam.internal"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          volumeMounts:
+            - name: agent-config
+              mountPath: /run/spire/agent/config
+              readOnly: true
+            - name: agent-run-data
+              mountPath: /run/spire/agent/data
+            - name: agent-sockets
+              mountPath: /run/spire/agent/public
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+            - name: kubeconfig
+              mountPath: /run/spire/agent/kubeconfig
+              readOnly: true
+            - name: uptime
+              mountPath: /run/uptime
+            - name: entries
+              mountPath: /entries
+              readOnly: true
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 2
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN  # Required for iptables rules
+
+      volumes:
+        - name: agent-config
+          configMap:
+            name: spire-agent-config
+        - name: agent-run-data
+          emptyDir: {}
+        - name: agent-sockets
+          emptyDir: {}
+        - name: spire-bundle
+          emptyDir: {}
+        - name: kubeconfig
+          configMap:
+            name: spire-agent-kubeconfig
+        - name: uptime
+          emptyDir: {}
+        - name: entries
+          configMap:
+            name: spire-agent-bootstrap
+
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"

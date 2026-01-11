@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-tertiary: #334155;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-border: #334155;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Status badge styles */
+.status-badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-critical {
+  @apply bg-red-500/20 text-red-400 border border-red-500/30;
+}
+
+.status-high {
+  @apply bg-orange-500/20 text-orange-400 border border-orange-500/30;
+}
+
+.status-medium {
+  @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30;
+}
+
+.status-low {
+  @apply bg-green-500/20 text-green-400 border border-green-500/30;
+}
+
+.status-info {
+  @apply bg-blue-500/20 text-blue-400 border border-blue-500/30;
+}
+
+/* Priority indicator */
+.priority-indicator {
+  @apply w-1 h-full absolute left-0 top-0;
+}
+
+.priority-critical {
+  @apply bg-incident-critical;
+}
+
+.priority-high {
+  @apply bg-incident-high;
+}
+
+.priority-medium {
+  @apply bg-incident-medium;
+}
+
+.priority-low {
+  @apply bg-incident-low;
+}
+
+/* Card hover effect */
+.incident-card {
+  @apply transition-all duration-200 hover:shadow-lg hover:shadow-primary-500/10;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full text-sm text-left;
+}
+
+.data-table th {
+  @apply px-4 py-3 font-medium text-gray-400 uppercase tracking-wider bg-gray-800/50;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-t border-gray-700;
+}
+
+.data-table tr:hover td {
+  @apply bg-gray-800/30;
+}
+
+/* Button styles */
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200;
+}
+
+.btn-primary {
+  @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50;
+}
+
+.btn-secondary {
+  @apply bg-gray-700 text-gray-200 hover:bg-gray-600 focus:ring-2 focus:ring-gray-500/50;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500/50;
+}
+
+.btn-ghost {
+  @apply text-gray-400 hover:text-white hover:bg-gray-700/50;
+}
+
+/* Input styles */
+.input {
+  @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-transparent;
+}
+
+/* Select styles */
+.select {
+  @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-transparent appearance-none cursor-pointer;
+}
+
+/* Badge animation */
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.badge-pulse {
+  animation: badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Timeline styles */
+.timeline-item {
+  @apply relative pl-8 pb-8 last:pb-0;
+}
+
+.timeline-item::before {
+  content: '';
+  @apply absolute left-3 top-3 w-0.5 h-full bg-gray-700;
+}
+
+.timeline-item:last-child::before {
+  @apply hidden;
+}
+
+.timeline-dot {
+  @apply absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center bg-gray-800 border-2 border-gray-700;
+}
+
+/* Loading spinner */
+.spinner {
+  @apply w-5 h-5 border-2 border-gray-600 border-t-primary-500 rounded-full animate-spin;
+}
+
+/* Empty state */
+.empty-state {
+  @apply flex flex-col items-center justify-center py-12 text-center;
+}
+
+.empty-state-icon {
+  @apply w-16 h-16 text-gray-600 mb-4;
+}
+
+.empty-state-title {
+  @apply text-lg font-medium text-gray-300 mb-2;
+}
+
+.empty-state-description {
+  @apply text-sm text-gray-500 max-w-sm;
+}

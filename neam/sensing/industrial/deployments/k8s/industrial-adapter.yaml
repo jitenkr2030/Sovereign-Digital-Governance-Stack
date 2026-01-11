@@ -1,0 +1,396 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: industrial-adapter-config
+  namespace: neam
+  labels:
+    app: industrial-adapter
+data:
+  CONFIG_YAML: |
+    service:
+      name: "industrial-adapter"
+      host: "0.0.0.0"
+      port: 8087
+      environment: "production"
+      shutdown_timeout: 30s
+    opcua:
+      enabled: true
+      sources:
+        - endpoint_url: "${OPCUA_ENDPOINT_URL}"
+          application_uri: "${OPCUA_APPLICATION_URI}"
+          product_uri: "${OPCUA_PRODUCT_URI}"
+          application_name: "NEAM Industrial Adapter"
+          security_policy: "${OPCUA_SECURITY_POLICY}"
+          security_mode: "${OPCUA_SECURITY_MODE}"
+          auth_mode: "${OPCUA_AUTH_MODE}"
+          username: "${OPCUA_USERNAME}"
+          password: "${OPCUA_PASSWORD}"
+          certificate_path: "/etc/neam/certs/client.pem"
+          private_key_path: "/etc/neam/certs/client-key.pem"
+          nodes_of_interest:
+            - "ns=2;s=Channel1.Device1.Temperature"
+            - "ns=2;s=Channel1.Device2.Temperature"
+            - "ns=2;s=Channel1.Device1.Pressure"
+            - "ns=2;s=Channel1.Device2.Pressure"
+            - "ns=2;s=Channel1.Device1.Flow"
+            - "ns=2;s=Channel1.Device1.Speed"
+            - "ns=2;s=Channel1.Device1.Position"
+        - endpoint_url: "${OPCUA_ENDPOINT_URL_2}"
+          application_uri: "${OPCUA_APPLICATION_URI_2}"
+          security_policy: "None"
+          security_mode: "None"
+          auth_mode: "Anonymous"
+          nodes_of_interest:
+            - "ns=2;s=Channel1.Temperature"
+            - "ns=2;s=Channel1.Pressure"
+      subscription_rate: 100ms
+      timeout: 30s
+      retry_interval: 5s
+      reconnect_wait: 1s
+      keep_alive: 10s
+    discovery:
+      enabled: true
+      discovery_interval: 300s
+      browse_depth: 3
+      filter_by_type:
+        - BaseAnalogType
+        - BaseDataVariable
+        - BaseDataType
+      include_children: true
+      cache_timeout: 600s
+    kafka:
+      brokers: "${KAFKA_BROKERS}"
+      output_topic: "industrial.telemetry"
+      dlq_topic: "industrial.dlq"
+      version: "2.8.0"
+      max_open_requests: 100
+      dial_timeout: 10s
+      write_timeout: 30s
+    session:
+      max_retries: 10
+      initial_delay: 1s
+      max_delay: 60s
+      multiplier: 2.0
+      health_check_interval: 30s
+      reconnect_wait: 5s
+      state_store_type: "redis"
+      state_store_url: "redis://redis:6379"
+    filtering:
+      deadband_percent: 0.1
+      spike_threshold: 20.0
+      spike_window_size: 5
+      rate_of_change_limit: 10.0
+      quality_filter:
+        - "Good"
+        - "Questionable"
+      min_reporting_interval: 100ms
+      max_value: 1e9
+      min_value: -1e9
+      outlier_threshold: 3.0
+    logging:
+      level: "info"
+      format: "json"
+      output_path: "/var/log/neam"
+      json_format: true
+    monitoring:
+      enabled: true
+      port: 9093
+      path: "/metrics"
+      health_path: "/health"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: industrial-adapter-secrets
+  namespace: neam
+  labels:
+    app: industrial-adapter
+type: Opaque
+stringData:
+  OPCUA_PASSWORD: "${OPCUA_PASSWORD}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: industrial-adapter
+  namespace: neam
+  labels:
+    app: industrial-adapter
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: industrial-adapter
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: industrial-adapter
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: industrial-adapter
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: industrial-adapter
+          image: neam/industrial-adapter:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8087
+              name: http
+            - containerPort: 9093
+              name: metrics
+          env:
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: KAFKA_BROKERS
+            - name: OPCUA_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_ENDPOINT_URL
+            - name: OPCUA_APPLICATION_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_APPLICATION_URI
+            - name: OPCUA_SECURITY_POLICY
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_SECURITY_POLICY
+            - name: OPCUA_SECURITY_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_SECURITY_MODE
+            - name: OPCUA_AUTH_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_AUTH_MODE
+            - name: OPCUA_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_USERNAME
+            - name: OPCUA_ENDPOINT_URL_2
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_ENDPOINT_URL_2
+            - name: OPCUA_APPLICATION_URI_2
+              valueFrom:
+                configMapKeyRef:
+                  name: industrial-adapter-config
+                  key: OPCUA_APPLICATION_URI_2
+          envFrom:
+            - secretRef:
+                name: industrial-adapter-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /etc/neam
+              readOnly: true
+            - name: certs
+              mountPath: /etc/neam/certs
+              readOnly: true
+            - name: logs
+              mountPath: /var/log/neam
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9093
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: industrial-adapter-config
+        - name: certs
+          secret:
+            secretName: industrial-adapter-certs
+        - name: logs
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: industrial-adapter
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: industrial-adapter
+  namespace: neam
+  labels:
+    app: industrial-adapter
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8087
+      targetPort: 8087
+      protocol: TCP
+      name: http
+    - port: 9093
+      targetPort: 9093
+      protocol: TCP
+      name: metrics
+  selector:
+    app: industrial-adapter
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: industrial-adapter
+  namespace: neam
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: industrial-adapter
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: industrial-adapter
+  namespace: neam
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - industrial-adapter.neam.example.com
+      secretName: industrial-adapter-tls
+  rules:
+    - host: industrial-adapter.neam.example.com
+      http:
+        paths:
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: industrial-adapter
+                port:
+                  number: 9093
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: industrial-adapter
+  namespace: neam
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: industrial-adapter
+  namespaceSelector:
+    matchNames:
+      - neam
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: industrial-adapter-alerts
+  namespace: neam
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: industrial-adapter
+      rules:
+        - alert: IndustrialAdapterDown
+          expr: up{job="industrial-adapter"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Industrial adapter is down"
+            description: "The industrial adapter has been down for more than 5 minutes"
+        - alert: IndustrialAdapterHighLatency
+          expr: histogram_quantile(0.95, rate(industrial_adapter_processing_latency_seconds_bucket[5m])) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Industrial adapter high latency"
+            description: "Industrial adapter processing latency is above 10ms"
+        - alert: IndustrialAdapterHighFilterRate
+          expr: rate(industrial_adapter_points_filtered_total[5m]) / rate(industrial_adapter_points_processed_total[5m]) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High filter rate detected"
+            description: "More than 50% of points are being filtered"
+        - alert: IndustrialAdapterOPCUAUnhealthy
+          expr: industrial_adapter_opcua_connected == 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "OPC UA connection unhealthy"
+            description: "OPC UA server connection is unhealthy"
+        - alert: IndustrialAdapterDiscoveryFailed
+          expr: industrial_adapter_discovery_errors_total > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Asset discovery failures"
+            description: "Industrial asset discovery has encountered errors"

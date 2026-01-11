@@ -1,0 +1,369 @@
+# 加密货币政策配置
+
+# CSIC平台加密货币政策配置
+
+version: "1.0"
+last_updated: "2024-01-15"
+
+## 1. 监管范围
+
+### 1.1 监管资产类型
+
+```yaml
+regulated_assets:
+  cryptocurrencies:
+    - BTC
+    - ETH
+    - USDT
+    - USDC
+    - 其他主流加密资产
+    
+  stablecoins:
+    - 资产抵押型稳定币
+    - 算法稳定币（需额外审批）
+    
+  tokenized_assets:
+    - 证券代币（需SEC-like审批）
+    - 房地产代币
+    - 商品代币
+```
+
+### 1.2 监管对象类型
+
+```yaml
+regulated_entities:
+  exchanges:
+    - 现货交易所
+    - 衍生品交易所
+    - 杠杆交易平台
+    
+  custodians:
+    - 托管服务商
+    - 数字钱包提供商
+    
+  miners:
+    - PoW矿工
+    - 矿池运营
+    
+  payment_processors:
+    - 加密支付处理商
+    - ATM运营商
+```
+
+## 2. 交易监控规则
+
+### 2.1 大额交易报告 (CTR)
+
+```yaml
+large_transaction_rules:
+  threshold_usd: 10000
+  currency: USD
+  
+  reporting_requirement:
+    within_1_day: true
+    to_regulator: true
+    
+  fields_required:
+    - transaction_id
+    - timestamp
+    - from_address
+    - to_address
+    - amount
+    - currency
+    - transaction_type
+    - purpose
+```
+
+### 2.2 可疑活动报告 (SAR)
+
+```yaml
+suspicious_activity_rules:
+  detection_patterns:
+    - name: structuring
+      description: 结构性交易（拆分大额交易）
+      threshold:
+        count: 3
+        time_window: 24h
+        total_amount: 10000
+      severity: HIGH
+      
+    - name: rapid_movement
+      description: 快速资金转移
+      threshold:
+        max_transactions: 50
+        time_window: 1h
+      severity: MEDIUM
+      
+    - name: high_risk_jurisdiction
+      description: 高风险司法管辖区交易
+      jurisdictions:
+        - "North Korea"
+        - "Iran"
+        - "Syria"
+        - "Cuba"
+      severity: CRITICAL
+      
+    - name: darknet_activity
+      description: 与暗网相关地址的交易
+      blacklist:
+        - "已知暗网市场地址列表"
+      severity: CRITICAL
+```
+
+### 2.3 旅行规则
+
+```yaml
+travel_rule:
+  threshold_usd: 3000
+  
+  required_information:
+    originator:
+      - name
+      - account_number
+      - geographic_location
+      
+    beneficiary:
+      - name
+      - account_number
+      - geographic_location
+      
+  reporting:
+    to_vasp: true
+    to_regulator: true
+    retention_years: 5
+```
+
+## 3. 风险评分规则
+
+### 3.1 地址风险评分
+
+```yaml
+address_risk_scoring:
+  factors:
+    - name: transaction_history
+      weight: 0.3
+      max_score: 100
+      indicators:
+        high_risk_tx_count: -20
+        exchange_interaction: +10
+        known_mixer: -50
+        sanction_list: -100
+        
+    - name: geographic_risk
+      weight: 0.25
+      max_score: 100
+      indicators:
+        high_risk_country: -30
+        sanctioned_country: -100
+        enhanced_due_diligence_country: -15
+        
+    - name: behavioral_pattern
+      weight: 0.25
+      max_score: 100
+      indicators:
+        unusual_timing: -10
+        unusual_amount: -15
+        structured_pattern: -25
+        
+    - name: counterparty_risk
+      weight: 0.2
+      max_score: 100
+      indicators:
+        high_risk_counterparty: -30
+        unknown_counterparty: -10
+        verified_exchange: +15
+        
+  risk_levels:
+    LOW: 0-40
+    MEDIUM: 41-60
+    HIGH: 61-80
+    CRITICAL: 81-100
+```
+
+### 3.2 实体风险评分
+
+```yaml
+entity_risk_scoring:
+  exchange:
+    factors:
+      - name: financial_health
+        weight: 0.3
+        indicators:
+          capital_adequacy: 50
+          liquidity_ratio: 30
+          profitability: 20
+          
+      - name: compliance_history
+        weight: 0.25
+        indicators:
+          violation_count: -10
+          fine_amount: -5
+          license_status: 30
+          
+      - name: operational_stability
+        weight: 0.25
+        indicators:
+          uptime_percentage: 40
+          incident_count: -10
+          security_audit: 20
+          
+      - name: market_position
+        weight: 0.2
+        indicators:
+          volume_ranking: 20
+          user_count: 10
+          years_operation: 10
+```
+
+## 4. 合规要求
+
+### 4.1 KYC要求
+
+```yaml
+kyc_requirements:
+  tiers:
+    - tier: TIER_1
+      limits:
+        daily: 1000
+        monthly: 10000
+      requirements:
+        - email_verification
+        - phone_verification
+        
+    - tier: TIER_2
+      limits:
+        daily: 10000
+        monthly: 100000
+      requirements:
+        - id_document
+        - address_proof
+        - biometric_verification
+        
+    - tier: TIER_3
+      limits:
+        daily: 100000
+        monthly: 1000000
+      requirements:
+        - enhanced_due_diligence
+        - source_of_funds
+        - pep_screening
+        - negative_news_check
+```
+
+### 4.2 AML/CFT程序
+
+```yaml
+aml_cft_programs:
+  transaction_monitoring:
+    real_time: true
+    rules_engine: true
+    alert_generation: true
+    
+  sanctions_screening:
+    real_time: true
+    lists:
+      - OFAC
+      - UN
+      - EU
+      - 本地制裁名单
+      
+  enhanced_due_diligence:
+    required_for:
+      - PEPs
+      - high_risk_jurisdictions
+      - high_value_transactions
+```
+
+## 5. 报告要求
+
+### 5.1 定期报告
+
+```yaml
+reporting_requirements:
+  daily:
+    - type: TRANSACTION_SUMMARY
+      due_time: "06:00 UTC"
+      
+  monthly:
+    - type: VOLUME_REPORT
+      due_time: "05:00 UTC"
+      deadline_day: 15
+      
+    - type: COMPLIANCE_REPORT
+      due_time: "05:00 UTC"
+      deadline_day: 20
+      
+  quarterly:
+    - type: RISK_ASSESSMENT
+      due_time: "04:00 UTC"
+      
+  annual:
+    - type: AUDITED_FINANCIAL
+      due_time: "03:00 UTC"
+      deadline: end_of_Q1
+```
+
+### 5.2 事件报告
+
+```yaml
+incident_reporting:
+  security_breach:
+    reporting_time: 24h
+    to_regulator: true
+    to_affected_parties: true
+    
+  data_breach:
+    reporting_time: 72h
+    to_regulator: true
+    to_affected_parties: true
+    
+  operational_incident:
+    reporting_time: 48h
+    to_regulator: if_material
+```
+
+## 6. 处罚措施
+
+```yaml
+penalties:
+  violations:
+    minor:
+      fine: 10000-50000
+      description: 技术性违规
+      
+    moderate:
+      fine: 50000-500000
+      description: 程序性违规
+      
+    severe:
+      fine: 500000-5000000
+      description: 实质性违规
+      
+    critical:
+      fine: 5000000+
+      plus_possible_criminal
+      description: 故意违规或欺诈
+```
+
+## 7. 政策更新流程
+
+```yaml
+policy_update_process:
+  proposal:
+    - stakeholder_input
+    - impact_assessment
+    
+  review:
+    - legal_review
+    - technical_review
+    - compliance_review
+    
+  approval:
+    - regulatory_approval
+    - implementation_plan
+    
+  communication:
+    - stakeholder_notification
+    - system_update
+    - training
+```

@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "5s"
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: "postgres:5432"
+    database: "csic_tx_monitor"
+    user: "csic"
+    secureJsonData:
+      password: "csic_secret"
+    jsonData:
+      sslmode: "disable"
+      timescaledb: false

@@ -1,0 +1,424 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-experiments
+  labels:
+    app.kubernetes.io/name: chaos-experiments
+    app.kubernetes.io/managed-by: kubectl
+---
+# RBAC Configuration for Chaos Experiments
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-experimenter
+  namespace: chaos-experiments
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-experimenter
+  namespace: chaos-experiments
+rules:
+- apiGroups: ["chaos-mesh.org"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-experimenter
+  namespace: chaos-experiments
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chaos-experimenter
+subjects:
+- kind: ServiceAccount
+  name: chaos-experimenter
+  namespace: chaos-experiments
+---
+# Pod Chaos - Pod Kill Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-frontend
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: frontend
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: frontend
+  mode: one
+  action: pod-kill
+  gracePeriod: 0
+---
+# Pod Chaos - Container Kill Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: container-kill-sidecar
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: api
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: api
+  mode: one
+  action: container-kill
+  containerNames:
+    - logging-sidecar
+  gracePeriod: 0
+---
+# Pod Chaos - Pod Failure Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-api
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: api
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: api
+  mode: all
+  action: pod-failure
+---
+# Network Chaos - Latency Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-database
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: database
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: database
+  mode: all
+  action: delay
+  delay:
+    latency: 100ms
+    jitter: 20ms
+    correlation: "50"
+  direction: both
+---
+# Network Chaos - Latency with Variable Delay
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-latency-variable
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-service: payment-service
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: payment-service
+  mode: all
+  action: delay
+  delay:
+    latency: 200ms
+    jitter: 100ms
+  direction: both
+---
+# Network Chaos - Packet Loss Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-loss-internal
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: internal
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      zone: internal
+  mode: all
+  action: loss
+  loss:
+    loss: "10"
+    correlation: "50"
+  direction: both
+---
+# Network Chaos - Network Partition Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition-zones
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-scope: multi-zone
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      zone: primary
+  mode: all
+  action: partition
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        zone: secondary
+---
+# Network Chaos - Bandwidth Limiting
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-bandwidth-limit
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: storage
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: storage
+  mode: all
+  action: bandwidth
+  bandwidth:
+    rate: 1mbps
+    limit: 1024
+    buffer: 10240
+---
+# Stress Chaos - CPU Stress Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-cpu-api
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: api
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: api-service
+  mode: one
+  action: cpu
+  stressors:
+    cpu:
+      workers: 4
+      load: 80
+---
+# Stress Chaos - Memory Stress Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-memory-processor
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: processor
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: data-processor
+  mode: one
+  action: memory
+  stressors:
+    memory:
+      workers: 2
+      size: "1GB"
+---
+# Stress Chaos - IO Stress Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-io-database
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: database
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: database
+  mode: one
+  action: io
+  stressors:
+    io:
+      workers: 4
+---
+# DNS Chaos - DNS Error Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-error-external
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-scope: external
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  action: error
+  patterns:
+    - "*.external-service.com"
+---
+# DNS Chaos - DNS Mapping Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-mock-internal
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-scope: internal
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: gateway
+  mode: all
+  action: map
+  patterns:
+    - "internal-service.local": "10.0.0.100"
+---
+# Time Chaos - Time Shift Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name:-time-shift-backend
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: backend
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: backend
+  mode: one
+  timeOffset: -300s
+---
+# JVM Chaos - GC Pause Experiment (requires JVM injection)
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JvmChaos
+metadata:
+  name: jvm-gc-pause
+  namespace: chaos-experiments
+  labels:
+    experiment-type: infrastructure
+    target-tier: java-services
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      framework: spring-boot
+  mode: all
+  action: gc
+  gc:
+    pause: 500ms
+    interval: 1000ms
+---
+# HTTP Chaos - Abort Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-abort-checkout
+  namespace: chaos-experiments
+  labels:
+    experiment-type: application
+    target-service: checkout-service
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: checkout-service
+  mode: all
+  action: abort
+  target: service
+  abort:
+    code: 503
+---
+# HTTP Chaos - Delay Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-delay-user
+  namespace: chaos-experiments
+  labels:
+    experiment-type: application
+    target-service: user-service
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: user-service
+  mode: all
+  action: delay
+  target: service
+  delay: "500ms"
+---
+# HTTP Chaos - Replace Experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-replace-payment
+  namespace: chaos-experiments
+  labels:
+    experiment-type: application
+    target-service: payment-service
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: payment-service
+  mode: all
+  action: replace
+  target: service
+  replace:
+    statusCode: 500
+  percent: "10"

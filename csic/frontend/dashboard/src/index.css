@@ -1,0 +1,265 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 59 130 246;
+    --color-success: 16 185 129;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+  }
+
+  body {
+    @apply bg-dark-50 text-dark-900 dark:bg-dark-950 dark:text-dark-100;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  * {
+    @apply border-dark-200 dark:border-dark-700;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-100 dark:bg-dark-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-300 dark:bg-dark-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-400 dark:bg-dark-500;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium
+           transition-all duration-200 ease-out focus:outline-none focus:ring-2
+           focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500
+           active:bg-primary-800;
+  }
+
+  .btn-secondary {
+    @apply btn bg-dark-200 text-dark-900 hover:bg-dark-300 dark:bg-dark-700 dark:text-dark-100
+           dark:hover:bg-dark-600 focus:ring-dark-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500
+           active:bg-red-800;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-dark-600 hover:bg-dark-100 dark:text-dark-400
+           dark:hover:bg-dark-800 focus:ring-dark-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  .input {
+    @apply w-full px-4 py-2.5 rounded-lg border border-dark-300 dark:border-dark-600
+           bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-100
+           placeholder-dark-400 dark:placeholder-dark-500
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           transition-all duration-200;
+  }
+
+  .input-error {
+    @apply input border-red-500 focus:ring-red-500;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1.5;
+  }
+
+  .card {
+    @apply bg-white dark:bg-dark-900 rounded-xl border border-dark-200 dark:border-dark-700
+           shadow-sm hover:shadow-md transition-shadow duration-200;
+  }
+
+  .card-header {
+    @apply px-6 py-4 border-b border-dark-200 dark:border-dark-700;
+  }
+
+  .card-body {
+    @apply p-6;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400;
+  }
+
+  .badge-warning {
+    @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400;
+  }
+
+  .badge-error {
+    @apply badge bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400;
+  }
+
+  .badge-neutral {
+    @apply badge bg-dark-100 text-dark-800 dark:bg-dark-800 dark:text-dark-300;
+  }
+
+  .stat-card {
+    @apply card p-6;
+  }
+
+  .stat-value {
+    @apply text-3xl font-bold text-dark-900 dark:text-dark-50;
+  }
+
+  .stat-label {
+    @apply text-sm text-dark-500 dark:text-dark-400 mt-1;
+  }
+
+  .table-container {
+    @apply overflow-x-auto rounded-lg border border-dark-200 dark:border-dark-700;
+  }
+
+  .table {
+    @apply min-w-full divide-y divide-dark-200 dark:divide-dark-700;
+  }
+
+  .table th {
+    @apply px-6 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-400
+           uppercase tracking-wider bg-dark-50 dark:bg-dark-800;
+  }
+
+  .table td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-dark-900 dark:text-dark-100;
+  }
+
+  .table tbody tr {
+    @apply bg-white dark:bg-dark-900 hover:bg-dark-50 dark:hover:bg-dark-800
+           transition-colors duration-150;
+  }
+
+  .page-header {
+    @apply mb-8;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold text-dark-900 dark:text-dark-50;
+  }
+
+  .page-description {
+    @apply text-dark-500 dark:text-dark-400 mt-1;
+  }
+
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs font-medium text-white bg-dark-900 rounded
+           shadow-lg pointer-events-none;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-dark-200 dark:bg-dark-700 rounded;
+  }
+
+  .dropdown-menu {
+    @apply absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white dark:bg-dark-800
+           ring-1 ring-black ring-opacity-5 z-50;
+  }
+
+  .dropdown-item {
+    @apply block px-4 py-2 text-sm text-dark-700 dark:text-dark-300
+           hover:bg-dark-100 dark:hover:bg-dark-700 transition-colors;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-primary-400;
+  }
+
+  .animate-in {
+    animation: fadeIn 0.3s ease-out, slideUp 0.3s ease-out;
+  }
+
+  .glass {
+    @apply bg-white/80 dark:bg-dark-900/80 backdrop-blur-lg;
+  }
+
+  .gradient-border {
+    @apply relative before:absolute before:inset-0 before:rounded-xl before:p-[1px]
+           before:bg-gradient-to-r before:from-primary-500 before:to-primary-600
+           before:-z-10;
+  }
+}
+
+/* D3 Chart Styles */
+.d3-chart {
+  @apply w-full h-full;
+}
+
+.d3-chart .axis path,
+.d3-chart .axis line {
+  @apply stroke-dark-300 dark:stroke-dark-600;
+}
+
+.d3-chart .axis text {
+  @apply fill-dark-600 dark:fill-dark-400 text-xs;
+}
+
+.d3-chart .grid line {
+  @apply stroke-dark-200 dark:stroke-dark-700;
+}
+
+.d3-chart .area {
+  @apply opacity-20;
+}
+
+.d3-chart .line {
+  @apply fill-none stroke-width-2;
+}
+
+.d3-chart .dot {
+  @apply cursor-pointer transition-transform hover:scale-150;
+}
+
+.d3-tooltip {
+  @apply absolute px-3 py-2 bg-dark-900 dark:bg-dark-700 text-white text-sm rounded-lg
+         shadow-xl pointer-events-none z-50;
+}
+
+/* Animation classes */
+.fade-enter {
+  opacity: 0;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}
+
+.fade-exit {
+  opacity: 1;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}

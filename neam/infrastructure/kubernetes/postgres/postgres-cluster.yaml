@@ -1,0 +1,325 @@
+# NEAM Platform - Data Storage Architecture & Deployment Model
+## Government-Grade Infrastructure Implementation
+
+This document provides the complete infrastructure implementation for the NEAM (National Economy Administration Platform) covering:
+- Multi-model data storage architecture
+- Kubernetes deployment manifests
+- Terraform infrastructure provisioning
+- GitOps configuration
+- Security hardening
+- Air-gapped deployment support
+
+---
+
+## Part 1: Kubernetes Storage Configuration
+
+### 1.1 PostgreSQL High-Availability Cluster
+<minimax:tool_call>
+<invoke name="Write">
+<parameter name="content"># PostgreSQL High-Availability Configuration
+# Using CloudNativePG Operator for production-grade PostgreSQL on Kubernetes
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-database
+  labels:
+    app.kubernetes.io/name: neam-platform
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: neam
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres
+data:
+  POSTGRESQL_SHARED_BUFFERS: 256MB
+  POSTGRESQL_MAX_CONNECTIONS: "500"
+  POSTGRESQL_EFFECTIVE_CACHE_SIZE: 1GB
+  POSTGRESQL_WORK_MEM: 16MB
+  POSTGRESQL_MAINTENANCE_WORK_MEM: 128MB
+  POSTGRESQL_CHECKPOINT_COMPLETION_TARGET: "0.9"
+  POSTGRESQL_WAL_BUFFERS: 64MB
+  POSTGRESQL_MAX_WAL_SIZE: 1GB
+  POSTGRESQL_MIN_WAL_SIZE: 80MB
+  POSTGRESQL_LOG_STATEMENT: "ddl"
+  POSTGRESQL_LOG_LINE_PREFIX: "%t [%p]: [%l-1] user=%u,db=%d "
+  POSTGRESQL_LOG_TIMEZONE: "Africa/Cairo"
+  PGDATA: "/var/lib/postgresql/data/pgdata"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secrets
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres
+type: Opaque
+stringData:
+  # These values will be generated and managed by HashiCorp Vault or SealedSecrets
+  postgres-user: "neam_admin"
+  postgres-password: "${POSTGRES_PASSWORD}"
+  replication-user: "repl_user"
+  replication-password: "${REPLICATION_PASSWORD}"
+  monitor-user: "monitor_user"
+  monitor-password: "${MONITOR_PASSWORD}"
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: neam-postgres
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: neam
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:15.5
+
+  # Storage Configuration
+  storage:
+    storageClass: nvme-ssd
+    size: 100Gi
+    mountPath: "/var/lib/postgresql/data"
+    keep: true
+
+  # Resources
+  resources:
+    requests:
+      cpu: "2"
+      memory: "4Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+
+  # Bootstrap Configuration
+  bootstrap:
+    initdb:
+      database: neam_core
+      owner: neam_admin
+      encoding: "UTF8"
+      locale: "en_US.UTF-8"
+      dataChecksums: true
+      preInitScript: |
+        -- Enable TimescaleDB extension
+        CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
+  # PostgreSQL Configuration
+  postgresql:
+    parameters:
+      shared_buffers: "256MB"
+      max_connections: "500"
+      effective_cache_size: "1GB"
+      work_mem: "16MB"
+      maintenance_work_mem: "128MB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "64MB"
+      max_wal_size: "1GB"
+      min_wal_size: "80MB"
+      log_statement: "ddl"
+      log_line_prefix: "%t [%p]: [%l-1] user=%u,db=%d "
+      log_timezone: "Africa/Cairo"
+      timezone: "Africa/Cairo"
+      datestyle: "iso, mdy"
+      lc_messages: "en_US.UTF-8"
+      lc_monetary: "en_US.UTF-8"
+      lc_numeric: "en_US.UTF-8"
+      lc_time: "en_US.UTF-8"
+      default_text_search_config: "pg_catalog.english"
+
+  # Backup Configuration (to MinIO S3)
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://neam-backups/postgres
+      endpointURL: http://minio.neam-storage:9000
+      s3Credentials:
+        accessKeyId:
+          name: minio-credentials
+          key: accesskey
+        secretAccessKey:
+          name: minio-credentials
+          key: secretkey
+      serverName: neam-postgres
+      wal:
+        compression: bzip2
+        maxParallel: 4
+      data:
+        compression: gzip
+        immediateCheckpoint: true
+      retentionPolicy: "30d"
+
+  # High Availability
+  failoverPriority: 0
+  primaryUpdateStrategy: unsupervised
+
+  # Monitoring
+  monitoring:
+    customQueriesConfigMap:
+      - name: postgres-monitoring-queries
+        key: queries.yaml
+
+  # Affinity Rules
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/instance: neam-postgres
+            topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                  - database
+
+  # Security Context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+
+  # Service Configuration
+  services:
+    primary:
+      type: ClusterIP
+      externalTrafficPolicy: ""
+      loadBalancerIP: ""
+      annotations: {}
+    replicas:
+      type: ClusterIP
+      externalTrafficPolicy: ""
+      loadBalancerIP: ""
+      annotations: {}
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: neam-postgres-pooler
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres-pooler
+spec:
+  cluster:
+    name: neam-postgres
+  deployment:
+    replicas: 2
+  pgBouncer:
+    poolMode: session
+    maxClientConn: "1000"
+    defaultPoolSize: "20"
+    minPoolSize: "5"
+    reservePoolSize: "10"
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-postgres-r
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: neam
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/name: neam-postgres
+    role: replica
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-postgres
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: neam
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/name: neam-postgres
+    role: primary
+
+---
+# Network Policy - Default Deny
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-network-policy
+  namespace: neam-database
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: neam-postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: neam
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9187
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: neam-storage
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000

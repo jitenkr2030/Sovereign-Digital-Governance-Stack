@@ -1,0 +1,647 @@
+# Chaos Mesh Experiment Definitions
+# Infrastructure-level chaos experiments for testing cluster resilience
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: infra-pod-failure-test
+  namespace: chaos-testing
+  labels:
+    app: chaos-engineering
+    tier: infrastructure
+spec:
+  entry: serial-pod-failure
+  templates:
+    - name: serial-pod-failure
+      templateType: Serial
+      deadline: 2h
+      children:
+        - pod-failure-001
+        - pod-failure-002
+        - pod-failure-003
+
+    - name: pod-failure-001
+      templateType: PodChaos
+      deadline: 10m
+      podChaos:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: payment-processor
+        mode: one
+        action: pod-kill
+        gracePeriod: 0
+
+    - name: pod-failure-002
+      templateType: PodChaos
+      deadline: 10m
+      podChaos:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: transaction-auditor
+        mode: one
+        action: pod-kill
+        gracePeriod: 0
+
+    - name: pod-failure-003
+      templateType: PodChaos
+      deadline: 10m
+      podChaos:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: analytics-engine
+        mode: one
+        action: pod-failure
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: infra-pod-container-kill
+  namespace: chaos-testing
+spec:
+  entry: container-kill-sequence
+  templates:
+    - name: container-kill-sequence
+      templateType: Serial
+      deadline: 1h
+      children:
+        - container-kill-sidecar
+        - container-kill-init
+
+    - name: container-kill-sidecar
+      templateType: PodChaos
+      deadline: 15m
+      podChaos:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: api-gateway
+        mode: all
+        action: container-kill
+        containerNames:
+          - istio-proxy
+
+    - name: container-kill-init
+      templateType: PodChaos
+      deadline: 15m
+      podChaos:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: auth-service
+        mode: one
+        action: container-kill
+        containerNames:
+          - init-config
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-random
+  namespace: chaos-testing
+  labels:
+    experiment: pod-failure
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+      - staging
+    labelSelectors:
+      tier: frontend
+  mode: random
+  action: pod-failure
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-multiple
+  namespace: chaos-testing
+  labels:
+    experiment: pod-kill
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: redis-cache
+  mode: all
+  action: pod-kill
+  gracePeriod: 5
+  duration: 2m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-network-chaos
+  namespace: chaos-testing
+  labels:
+    experiment: network-chaos
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: postgres-primary
+  mode: one
+  action: pod-network-chaos
+  networkChaos:
+    mode: all
+    selector:
+      namespaces:
+        - production
+    direction: both
+    target:
+      selector:
+        namespaces:
+          - production
+        labelSelectors:
+          app: payment-processor
+    delay:
+      latency: 100ms
+      jitter: 20ms
+      correlation: "50"
+    loss:
+      loss: "20"
+      correlation: "50"
+    duplicate: "5"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition
+  namespace: chaos-testing
+  labels:
+    experiment: network-partition
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: backend
+  mode: all
+  action: partition
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        tier: database
+  direction: both
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-latency-inject
+  namespace: chaos-testing
+  labels:
+    experiment: network-latency
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  action: delay
+  delay:
+    latency: 50ms
+    jitter: 10ms
+    correlation: "30"
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: api-gateway
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-loss-inject
+  namespace: chaos-testing
+  labels:
+    experiment: network-loss
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+      - staging
+  mode: all
+  action: loss
+  loss:
+    loss: "10"
+    correlation: "50"
+  direction: both
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-corrupt-inject
+  namespace: chaos-testing
+  labels:
+    experiment: network-corruption
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  action: corrupt
+  corrupt:
+    corrupt: "3"
+    correlation: "50"
+  direction: both
+  duration: 2m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-error-inject
+  namespace: chaos-testing
+  labels:
+    experiment: dns-chaos
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  action: error
+  patterns:
+    - "external-service.example.com"
+  duration: 2m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-random-domain
+  namespace: chaos-testing
+  labels:
+    experiment: dns-chaos
+    severity: low
+spec:
+  selector:
+    namespaces:
+      - development
+  mode: random
+  action: random
+  patterns:
+    - "*.internal.example.com"
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-latency-data-service
+  namespace: chaos-testing
+  labels:
+    experiment: io-latency
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: postgres-primary
+  mode: one
+  action: latency
+  delay: 100ms
+  percent: "50"
+  path: /var/lib/postgresql/data
+  volumePath: /var/lib/postgresql/data
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-latency-cache-service
+  namespace: chaos-testing
+  labels:
+    experiment: io-latency
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: redis-cache
+  mode: one
+  action: latency
+  delay: 50ms
+  percent: "30"
+  path: /data
+  volumePath: /data
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-error-data-service
+  namespace: chaos-testing
+  labels:
+    experiment: io-error
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: postgres-primary
+  mode: one
+  action: errno
+  errno: "5"  # ENFILE - File table overflow
+  percent: "5"
+  path: /var/lib/postgresql/data
+  volumePath: /var/lib/postgresql/data
+  duration: 1m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-mixed-errors
+  namespace: chaos-testing
+  labels:
+    experiment: io-mixed
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  action: mixed
+  delay: 200ms
+  percent: "20"
+  loss: "5"
+  errno: "28"  # ENOSPC - No space left on device
+  path: /tmp
+  volumePath: /tmp
+  duration: 3m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-pressure-production
+  namespace: chaos-testing
+  labels:
+    experiment: stress-cpu
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: analytics-engine
+  mode: one
+  stressors:
+    cpu:
+      workers: 4
+      load: 80
+      options:
+        - --cpu 4
+        - --load 80
+  duration: 15m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-pressure-multi-service
+  namespace: chaos-testing
+  labels:
+    experiment: stress-cpu
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: all
+  stressors:
+    cpu:
+      workers: 2
+      load: 50
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: memory-pressure-service
+  namespace: chaos-testing
+  labels:
+    experiment: stress-memory
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: payment-processor
+  mode: one
+  stressors:
+    memory:
+      workers: 1
+      size: "1GB"
+      options:
+        - --vm
+        - --vm-bytes 1G
+        - --vm-keep
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: memory-pressure-all
+  namespace: chaos-testing
+  labels:
+    experiment: stress-memory
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+      - staging
+  mode: all
+  stressors:
+    memory:
+      workers: 2
+      size: "256MB"
+  duration: 3m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: combined-cpu-memory-pressure
+  namespace: chaos-testing
+  labels:
+    experiment: stress-combined
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: random
+  stressors:
+    cpu:
+      workers: 2
+      load: 70
+    memory:
+      workers: 1
+      size: "512MB"
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-shift-production
+  namespace: chaos-testing
+  labels:
+    experiment: time-shift
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: batch-processor
+  mode: one
+  timeOffset: -1h
+  clockIds:
+    - CLOCK_REALTIME
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-drift-service
+  namespace: chaos-testing
+  labels:
+    experiment: time-drift
+    severity: low
+spec:
+  selector:
+    namespaces:
+      - staging
+    labelSelectors:
+      app: cron-scheduler
+  mode: one
+  timeOffset: 5m
+  clockIds:
+    - CLOCK_MONOTONIC
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AwsChaos
+metadata:
+  name: aws-ec2-terminate
+  namespace: chaos-testing
+  labels:
+    experiment: aws-chaos
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: one
+  action: ec2-terminate
+  awsRegion: us-east-1
+  instanceID: "i-xxxxxxxxxxxxx"
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AwsChaos
+metadata:
+  name: aws-detach-volume
+  namespace: chaos-testing
+  labels:
+    experiment: aws-chaos
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: one
+  action: detach-volume
+  awsRegion: us-east-1
+  volumeID: "vol-xxxxxxxxxxxxx"
+  deviceName: "/dev/sdf"
+  duration: 2m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GcpChaos
+metadata:
+  name: gcp-vm-reset
+  namespace: chaos-testing
+  labels:
+    experiment: gcp-chaos
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+  mode: one
+  action: vm-reset
+  gcpRegion: us-central1
+  instanceName: "neam-vm-xxx"
+  zone: us-central1-a
+  duration: 3m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: node-cpu-stress
+  namespace: chaos-testing
+  labels:
+    experiment: node-chaos
+    severity: high
+spec:
+  selector:
+    labelSelectors:
+      node-role.kubernetes.io/worker: ""
+  mode: one
+  action: cpu
+  cpu: 4
+  duration: 10m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: node-memory-stress
+  namespace: chaos-testing
+  labels:
+    experiment: node-chaos
+    severity: critical
+spec:
+  selector:
+    labelSelectors:
+      node-role.kubernetes.io/worker: ""
+  mode: one
+  action: memory
+  memory: "4GB"
+  duration: 5m
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: daily-chaos-experiments
+  namespace: chaos-testing
+spec:
+  concurrencyPolicy: Forbid
+  schedule: "0 2 * * 6"  # Every Saturday at 2 AM
+  startingDeadlineSeconds: 3600
+  workflows:
+    - name: infra-pod-failure-test

@@ -1,0 +1,83 @@
+# NEAM Platform Helm Deployment Kustomization
+# This kustomization file coordinates deployment across all services
+
+namespace: neam-platform
+
+resources:
+  - ../../sensing
+  - ../../black-economy
+  - ../../feature-store
+  - ../../macro
+  - ../../intelligence
+  - ../../policy
+  - ../../reporting
+  - ../../intervention
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/managed-by: Helm
+  app.kubernetes.io/part-of: neam-platform
+
+# Common annotations
+commonAnnotations:
+  checksum/config: ""
+
+# Replica count overrides (can be customized per environment)
+replicas:
+  - name: sensing
+    count: 2
+  - name: black-economy
+    count: 3
+  - name: feature-store
+    count: 2
+  - name: macro
+    count: 2
+  - name: intelligence
+    count: 2
+  - name: policy
+    count: 2
+  - name: reporting
+    count: 2
+  - name: intervention
+    count: 1
+
+# Image overrides
+images:
+  - name: neam-platform/sensing
+    newTag: "1.0.0"
+  - name: neam-platform/black-economy
+    newTag: "1.0.0"
+  - name: neam-platform/feature-store
+    newTag: "1.0.0"
+  - name: neam-platform/macro
+    newTag: "1.0.0"
+  - name: neam-platform/intelligence
+    newTag: "1.0.0"
+  - name: neam-platform/policy
+    newTag: "1.0.0"
+  - name: neam-platform/reporting
+    newTag: "1.0.0"
+  - name: neam-platform/intervention
+    newTag: "1.0.0"
+
+# ConfigMap generator for shared configuration
+configMapGenerator:
+  - name: neam-global-config
+    files:
+      - global-settings.yaml=../../config/global-settings.yaml
+
+# Secret generator for shared secrets
+secretGenerator:
+  - name: neam-global-secrets
+    files:
+      - .dockerconfigjson=../../secrets/dockerconfig.json
+    type: kubernetes.io/dockerconfigjson
+
+# Patches for resource limits
+patches:
+  - target:
+      kind: Deployment
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  control-layer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-control-layer
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://csic:csic_secret@postgres:5432/csic_platform?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - KAFKA_BROKERS=kafka:9092
+      - LOG_LEVEL=info
+      - HTTP_PORT=8080
+      - GRPC_PORT=9090
+    volumes:
+      - ./internal/config/config.yaml:/etc/control-layer/config.yaml:ro
+      - control-layer-logs:/var/log/control-layer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  control-layer-logs:
+
+networks:
+  csic-network:
+    external: true

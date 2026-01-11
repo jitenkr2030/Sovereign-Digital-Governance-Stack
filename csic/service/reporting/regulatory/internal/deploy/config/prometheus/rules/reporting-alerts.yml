@@ -1,0 +1,160 @@
+groups:
+  - name: csic-reporting-alerts
+    rules:
+      # Service Health Alerts
+      - alert: ReportingAPIDown
+        expr: up{job="csic-reporting-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Regulatory Reporting API is down"
+          description: "The reporting API service has been unreachable for more than 1 minute."
+
+      - alert: ReportingAPIHighErrorRate
+        expr: rate(http_requests_total{job="csic-reporting-api",status=~"5.."}[5m]) / rate(http_requests_total{job="csic-reporting-api"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on Reporting API"
+          description: "More than 5% of requests are returning 5xx errors."
+
+      # Database Alerts
+      - alert: ReportingDatabaseDown
+        expr: pg_up{job="csic-reporting-postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: database
+        annotations:
+          summary: "Reporting PostgreSQL is down"
+          description: "The PostgreSQL database is unreachable."
+
+      - alert: ReportingDatabaseConnectionPoolExhausted
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+        annotations:
+          summary: "PostgreSQL connection pool nearly exhausted"
+          description: "Connection pool usage exceeds 90%."
+
+      # Redis Alerts
+      - alert: ReportingRedisDown
+        expr: redis_up{job="csic-reporting-redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Reporting Redis is down"
+          description: "The Redis instance for job queue is unreachable."
+
+      - alert: ReportingRedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage exceeds 90% of max memory."
+
+      # Kafka Alerts
+      - alert: ReportingKafkaDown
+        expr: kafka_broker_is_active{job="csic-reporting-kafka"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Kafka broker is not active."
+
+      - alert: ReportingKafkaUnderReplicatedPartitions
+        expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Kafka has under-replicated partitions"
+          description: "Some partitions are under-replicated, indicating potential data loss risk."
+
+      # Storage Alerts
+      - alert: ReportingStorageSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/app/reports"} / node_filesystem_size_bytes{mountpoint="/app/reports"})) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Report storage space is running low"
+          description: "Less than 15% storage space available."
+
+      # Job Queue Alerts
+      - alert: ReportingJobQueueBacklogHigh
+        expr: bullmq_queue_jobs_total{status="waiting"} > 1000
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Report generation job queue has high backlog"
+          description: "More than 1000 jobs waiting in the queue."
+
+      - alert: ReportingJobQueueStalled
+        expr: bullmq_queue_jobs_total{status="stalled"} > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Stalled jobs detected in report queue"
+          description: "More than 10 jobs have been stalled and require attention."
+
+      # Report Generation Alerts
+      - alert: ReportingGenerationFailureRateHigh
+        expr: rate(report_generation_total{status="failed"}[1h]) / rate(report_generation_total[1h]) > 0.1
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High report generation failure rate"
+          description: "More than 10% of report generation attempts failed in the last hour."
+
+      - alert: ReportingGenerationTimeHigh
+        expr: histogram_quantile(0.95, rate(report_generation_duration_seconds_bucket[1h])) > 300
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Report generation taking too long"
+          description: "95th percentile of report generation time exceeds 5 minutes."
+
+  - name: csic-reporting-recording
+    rules:
+      # Recording rules for better query performance
+      - record: report_generation:rate_5m
+        expr: rate(report_generation_total[5m])
+
+      - record: report_generation_failure:rate_5m
+        expr: rate(report_generation_total{status="failed"}[5m])
+
+      - record: http_requests:rate_5m
+        expr: rate(http_requests_total[5m])
+
+      - record: http_requests_errors:rate_5m
+        expr: rate(http_requests_total{status=~"5.."}[5m])
+
+      - record: bullmq_queue_depth
+        expr: bullmq_queue_jobs_total
+
+      - record: report_storage:usage_percent
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/app/reports"} / node_filesystem_size_bytes{mountpoint="/app/reports"})) * 100

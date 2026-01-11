@@ -1,0 +1,68 @@
+# Forensic Tools Service Configuration
+
+# Application Configuration
+app:
+  name: "forensic-tools"
+  host: "0.0.0.0"
+  port: 8084
+  environment: "development"
+  log_level: "debug"
+
+# PostgreSQL Database Configuration (shared instance + table prefix isolation)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "backend_shared"
+  table_prefix: "sess_5274d1c3_"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+# Redis Configuration (key prefix isolation)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "sess:5274d1c3:forensic:"
+  pool_size: 10
+
+# Elasticsearch Configuration (shared index + session_id field isolation)
+elasticsearch:
+  host: "10.112.2.4"
+  port: 9200
+  index: "backend_shared_logs"
+  session_id: "5274d1c3"
+
+# Graph Analysis Configuration
+graph:
+  max_depth: 10
+  max_nodes: 10000
+  community_detection_limit: 1000
+  centrality_calculation_limit: 500
+
+# Evidence Management Configuration
+evidence:
+  retention_days: 365
+  max_evidence_size_mb: 100
+  hash_algorithm: "sha256"
+  chain_of_custody_enabled: true
+
+# Security Configuration
+security:
+  api_keys:
+    - "forensic-api-key-001"
+    - "forensic-api-key-002"
+  rate_limit:
+    requests_per_minute: 100
+    burst: 20
+
+# Health Check Configuration
+health:
+  enabled: true
+  endpoint: "/health"
+  interval: 30s
+  timeout: 10s

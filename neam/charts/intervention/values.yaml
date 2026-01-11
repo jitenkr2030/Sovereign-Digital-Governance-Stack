@@ -1,0 +1,218 @@
+# Default values for intervention service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "intervention"
+fullnameOverride: "neam-intervention"
+
+# Replica configuration
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: neam-platform/intervention
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-intervention"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-intervention-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "vwx234"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-intervention"
+
+envFrom:
+  - secretRef:
+      name: intervention-secrets
+  - configMapRef:
+      name: intervention-config
+
+command:
+  - "/intervention"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/intervention
+    readOnly: true
+
+volumes:
+  - name: config
+    configMap:
+      name: intervention-config
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: false
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      actions:
+        - type: alert
+          provider: pagerduty
+        - type: webhook
+          provider: custom
+        - type: remediation
+          provider: ansible
+      
+      approval:
+        required_for_destructive: true
+        approvers:
+          - team: security
+          - team: platform
+      
+      rate_limiting:
+        max_actions_per_minute: 10
+        max_actions_per_hour: 100
+      
+      dry_run:
+        enabled: true
+        default: true
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - intervention
+          topologyKey: kubernetes.io/hostname
+
+tolerations: []
+
+terminationGracePeriodSeconds: 30
+
+priorityClassName: critical-priority
+
+# Autoscaling
+autoscaling:
+  enabled: false
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: 0
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

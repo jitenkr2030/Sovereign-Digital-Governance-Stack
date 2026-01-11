@@ -1,0 +1,578 @@
+# NEAM - National Economic Activity Monitor
+# Development Environment Docker Compose Configuration
+
+version: '3.8'
+
+services:
+  # ==================== MESSAGE BROKER ====================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: neam-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", 'echo ruok | nc localhost 2181 | grep imok']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    container_name: neam-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_MESSAGE_MAX_BYTES: 104857600
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: 'true'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", 'kafka-broker-api-versions --bootstrap-server localhost:9092']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: neam-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: neam-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - neam-network
+
+  # ==================== DATABASES ====================
+  postgres:
+    image: postgres:15-alpine
+    hostname: postgres
+    container_name: neam-postgres
+    environment:
+      POSTGRES_USER: neam_user
+      POSTGRES_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      POSTGRES_DB: neam_platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/schema/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./scripts/schema/tables.sql:/docker-entrypoint-initdb.d/02-tables.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neam_user -d neam_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    hostname: clickhouse
+    container_name: neam-clickhouse
+    environment:
+      CLICKHOUSE_DB: neam_analytics
+      CLICKHOUSE_USER: neam_user
+      CLICKHOUSE_PASSWORD: ${NEAM_CH_PASSWORD:-neam_secret_password}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./scripts/schema/clickhouse/:/docker-entrypoint-initdb.d/
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client -u neam_user --password=${NEAM_CH_PASSWORD:-neam_secret_password} -q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: neam-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    hostname: opensearch
+    container_name: neam-opensearch
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${NEAM_OS_PASSWORD:-neam_admin_password}
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - neam-network
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s https://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ==================== NEAM SERVICES ====================
+  neam-api-gateway:
+    build:
+      context: ../services
+      dockerfile: Dockerfile
+    hostname: api-gateway
+    container_name: neam-api-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_DB_HOST: postgres
+      NEAM_DB_PORT: 5432
+      NEAM_DB_USER: neam_user
+      NEAM_DB_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      NEAM_DB_NAME: neam_platform
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_SERVER_PORT: 8080
+      NEAM_AUTH_ENABLED: 'true'
+      NEAM_JWT_SECRET: ${NEAM_JWT_SECRET:-development_secret_key_change_in_production}
+    ports:
+      - "8080:8080"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8080/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-sensing-ingestor:
+    build:
+      context: ../sensing
+      dockerfile: Dockerfile
+    hostname: sensing-ingestor
+    container_name: neam-sensing-ingestor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_KAFKA_TOPIC_PREFIX: neam.sensing
+      NEAM_CLICKHOUSE_HOST: clickhouse
+      NEAM_CLICKHOUSE_PORT: 8123
+      NEAM_CLICKHOUSE_USER: neam_user
+      NEAM_CLICKHOUSE_PASSWORD: ${NEAM_CH_PASSWORD:-neam_secret_password}
+      NEAM_CLICKHOUSE_DATABASE: neam_analytics
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+    ports:
+      - "8082:8080"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8082/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-intelligence-engine:
+    build:
+      context: ../intelligence
+      dockerfile: Dockerfile
+    hostname: intelligence-engine
+    container_name: neam-intelligence-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_KAFKA_TOPIC_PREFIX: neam.intelligence
+      NEAM_CLICKHOUSE_HOST: clickhouse
+      NEAM_CLICKHOUSE_PORT: 8123
+      NEAM_CLICKHOUSE_USER: neam_user
+      NEAM_CLICKHOUSE_PASSWORD: ${NEAM_CH_PASSWORD:-neam_secret_password}
+      NEAM_CLICKHOUSE_DATABASE: neam_analytics
+      NEAM_DB_HOST: postgres
+      NEAM_DB_PORT: 5432
+      NEAM_DB_USER: neam_user
+      NEAM_DB_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      NEAM_DB_NAME: neam_platform
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+      NEAM_PYTHON_ENABLED: 'true'
+      NEAM_PYTHON_ENDPOINT: python-engine:8000
+    ports:
+      - "8083:8080"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8083/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-python-engine:
+    build:
+      context: ../intelligence/python
+      dockerfile: Dockerfile
+    hostname: python-engine
+    container_name: neam-python-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_CLICKHOUSE_HOST: clickhouse
+      NEAM_CLICKHOUSE_PORT: 8123
+      NEAM_CLICKHOUSE_USER: neam_user
+      NEAM_CLICKHOUSE_PASSWORD: ${NEAM_CH_PASSWORD:-neam_secret_password}
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-intervention-engine:
+    build:
+      context: ../intervention
+      dockerfile: Dockerfile
+    hostname: intervention-engine
+    container_name: neam-intervention-engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neam-api-gateway:
+        condition: service_started
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_KAFKA_TOPIC_PREFIX: neam.intervention
+      NEAM_DB_HOST: postgres
+      NEAM_DB_PORT: 5432
+      NEAM_DB_USER: neam_user
+      NEAM_DB_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      NEAM_DB_NAME: neam_platform
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+      NEAM_API_URL: http://neam-api-gateway:8080
+      NEAM_WORKFLOW_ENABLED: 'true'
+      NEAM_WORKFLOW_BACKEND: temporal
+      NEAM_TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8084:8080"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8084/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-reporting-service:
+    build:
+      context: ../reporting
+      dockerfile: Dockerfile
+    hostname: reporting-service
+    container_name: neam-reporting-service
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_CLICKHOUSE_HOST: clickhouse
+      NEAM_CLICKHOUSE_PORT: 8123
+      NEAM_CLICKHOUSE_USER: neam_user
+      NEAM_CLICKHOUSE_PASSWORD: ${NEAM_CH_PASSWORD:-neam_secret_password}
+      NEAM_CLICKHOUSE_DATABASE: neam_analytics
+      NEAM_DB_HOST: postgres
+      NEAM_DB_PORT: 5432
+      NEAM_DB_USER: neam_user
+      NEAM_DB_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      NEAM_DB_NAME: neam_platform
+      NEAM_KAFKA_BROKERS: kafka:29092
+      NEAM_EXPORT_DIR: /exports
+    ports:
+      - "8085:8080"
+    volumes:
+      - exports_data:/exports
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8085/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  neam-security-service:
+    build:
+      context: ../security
+      dockerfile: Dockerfile
+    hostname: security-service
+    container_name: neam-security-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      NEAM_ENV: development
+      NEAM_LOG_LEVEL: debug
+      NEAM_DB_HOST: postgres
+      NEAM_DB_PORT: 5432
+      NEAM_DB_USER: neam_user
+      NEAM_DB_PASSWORD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      NEAM_DB_NAME: neam_platform
+      NEAM_REDIS_HOST: redis
+      NEAM_REDIS_PORT: 6379
+      NEAM_OPENSEARCH_URL: http://opensearch:9200
+      NEAM_OPENSEARCH_USER: admin
+      NEAM_OPENSEARCH_PASSWORD: ${NEAM_OS_PASSWORD:-neam_admin_password}
+      NEAM_HSM_ENABLED: 'false'
+      NEAM_JWT_SECRET: ${NEAM_JWT_SECRET:-development_secret_key_change_in_production}
+    ports:
+      - "8086:8080"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8086/health | grep ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ==================== FRONTEND ====================
+  neam-frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    hostname: frontend
+    container_name: neam-frontend
+    depends_on:
+      - neam-api-gateway
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api
+      REACT_APP_WS_URL: ws://localhost:8080/ws
+      REACT_APP_ENV: development
+    ports:
+      - "3000:80"
+    networks:
+      - neam-network
+    restart: unless-stopped
+
+  # ==================== WORKFLOW ENGINE ====================
+  temporal:
+    image: temporalio/auto-setup:1.22.0
+    hostname: temporal
+    container_name: neam-temporal
+    depends_on:
+      - postgres
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: neam_user
+      POSTGRES_PWD: ${NEAM_DB_PASSWORD:-neam_secret_password}
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig/development.yaml
+      ENABLE_ES: 'false'
+    ports:
+      - "7233:7233"
+      - "8088:8080"
+    volumes:
+      - ./scripts/temporal/dynamicconfig:/etc/temporal/dynamicconfig
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8088/api/v1/namespaces/default/tasks-queues?queueName=neam-queue | grep queueName"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==================== MONITORING ====================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    hostname: prometheus
+    container_name: neam-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    hostname: grafana
+    container_name: neam-grafana
+    depends_on:
+      - prometheus
+      - opensearch
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${NEAM_GRAFANA_PASSWORD:-neam_admin_password}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==================== DATA GENERATION (Mock Data) ====================
+  mock-data-generator:
+    build:
+      context: ../scripts/mocks
+      dockerfile: Dockerfile
+    hostname: mock-generator
+    container_name: neam-mock-generator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC_PREFIX: neam.sensing
+      DATA_DIR: /data
+      GENERATION_MODE: continuous
+      INTERVAL_SECONDS: 60
+    volumes:
+      - mock_data:/data
+    networks:
+      - neam-network
+    profiles:
+      - data-generation
+    restart: unless-stopped
+
+# ==================== VOLUMES ====================
+volumes:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  postgres_data:
+  clickhouse_data:
+  redis_data:
+  opensearch_data:
+  prometheus_data:
+  grafana_data:
+  exports_data:
+  mock_data:
+
+# ==================== NETWORKS ====================
+networks:
+  neam-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16

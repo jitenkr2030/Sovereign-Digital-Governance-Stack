@@ -1,0 +1,167 @@
+version: '3.8'
+
+services:
+  # Energy Integration Service
+  energy-service:
+    build:
+      context: ../../
+      dockerfile: internal/deploy/Dockerfile
+    container_name: csic-energy-service
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "false"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: csic_energy
+      DATABASE_PASSWORD: ${DB_PASSWORD:-csic_password}
+      DATABASE_NAME: csic_energy
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC_PREFIX: energy
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database with TimescaleDB
+  postgres:
+    image: timescale/timescaledb:2.13.0-pg15
+    container_name: csic-energy-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_DB: csic_energy
+    volumes:
+      - postgres_energy_data:/var/lib/postgresql/data
+      - ../internal/db/migrations:/docker-entrypoint-initdb.d/migrations:ro
+    ports:
+      - "5433:5432"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    command: >
+      -c max_connections=100
+      -c shared_buffers=256MB
+      -c effective_cache_size=512MB
+      -c work_mem=64MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: csic-energy-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_energy_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Apache Kafka for telemetry streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-energy-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-energy-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: csic-energy-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_energy_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-energy-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_energy_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+networks:
+  csic-network:
+    driver: bridge
+
+volumes:
+  postgres_energy_data:
+  redis_energy_data:
+  prometheus_energy_data:
+  grafana_energy_data:

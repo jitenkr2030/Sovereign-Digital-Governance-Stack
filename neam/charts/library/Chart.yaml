@@ -1,0 +1,26 @@
+apiVersion: v2
+name: neam-library
+description: |
+  NEAM Platform Shared Library Chart
+  Provides common Kubernetes resource templates for all NEAM services.
+
+type: library
+
+version: 0.1.0
+
+keywords:
+  - neam
+  - library
+  - kubernetes
+  - microservices
+
+home: https://github.com/neam-platform
+repository: https://charts.neam.io
+
+maintainers:
+  - name: NEAM Platform Team
+    email: platform@neam.io
+
+annotations:
+  category: Infrastructure
+  licenses: Apache-2.0

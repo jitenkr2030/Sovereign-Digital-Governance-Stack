@@ -1,0 +1,46 @@
+# NEAM Platform Test Configuration
+# This file configures test infrastructure and reporting
+
+# Test Database Configuration
+TEST_DATABASE_DSN: "postgresql://neam_test:neam_test@localhost:5432/neam_test?sslmode=disable"
+TEST_REDIS_ADDR: "localhost:6379"
+TEST_KAFKA_BROKERS: "localhost:9092"
+TEST_SCHEMA_REGISTRY_URL: "http://localhost:8081"
+TEST_OTLP_ENDPOINT: "http://localhost:4317"
+TEST_LOG_LEVEL: "debug"
+TEST_ENVIRONMENT: "test"
+
+# Coverage Configuration
+COVERAGE_MIN_LINE: 80
+COVERAGE_MIN_FUNC: 75
+COVERAGE_MIN_BRANCH: 70
+
+# Test Execution Configuration
+TEST_TIMEOUT: "5m"
+TEST_PARALLEL_WORKERS: 4
+TEST_MAX_FAILURES: 10
+
+# Integration Test Configuration
+INTEGRATION_TEST_ENABLED: "true"
+INTEGRATION_TEST_DATABASE: "neam_integration_test"
+INTEGRATION_TEST_REDIS_DB: 15
+
+# Contract Testing Configuration
+PACT_BROKER_URL: "http://localhost:9292"
+PACT_BROKER_USERNAME: "pactbroker"
+PACT_BROKER_PASSWORD: "pactbroker"
+PACT_CONTRACT_VERSION: "1.0.0"
+
+# Load Testing Configuration
+LOAD_TEST_DURATION: "30s"
+LOAD_TEST_USERS: 100
+LOAD_TEST_RAMP_UP: "10s"
+
+# Benchmark Configuration
+BENCHMARK_MIN_ITERATIONS: 1000
+BENCHMARK_WARMUP_ITERATIONS: 100
+
+# CI/CD Configuration
+CI_COMMIT_SHA: "${CI_COMMIT_SHA:-unknown}"
+CI_PIPELINE_ID: "${CI_PIPELINE_ID:-unknown}"
+CI_JOB_ID: "${CI_JOB_ID:-unknown}"

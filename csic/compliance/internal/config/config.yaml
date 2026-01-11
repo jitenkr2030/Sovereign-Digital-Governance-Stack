@@ -1,0 +1,189 @@
+# CSIC Platform - Compliance Management Service Configuration
+# Government-grade regulatory compliance management
+
+# Application Settings
+app:
+  name: "csic-compliance-service"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+
+# Server Settings
+server:
+  host: "0.0.0.0"
+  port: 8082
+  read_timeout: 30      # seconds
+  write_timeout: 30     # seconds
+  max_body_size: 10485760  # bytes (10MB)
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "change_in_production"
+  name: "csic_compliance"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+# Redis Configuration (for caching)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 2
+  pool_size: 10
+
+# Logging Configuration
+logging:
+  level: "INFO"   # DEBUG, INFO, WARN, ERROR
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+  path: "/var/log/csic/compliance"  # file path if output is file
+
+# Audit Log Configuration
+audit_log:
+  service_url: "http://localhost:8081"
+  storage_path: "/var/lib/csic/compliance-audit"
+  seal_interval: 300  # seconds
+  enable_worm: true   # Write Once Read Many
+
+# Compliance Configuration
+compliance:
+  # License types and their requirements
+  license_types:
+    exchange:
+      name: "Exchange License"
+      duration_days: 365
+      renewal_notice_days: 60
+      requirements:
+        - "AML_KYC_PROGRAM"
+        - "CAPITAL_REQUIREMENT"
+        - "INSURANCE_COVERAGE"
+        - "OPERATIONAL_RESERVES"
+    custodial:
+      name: "Custodial License"
+      duration_days: 365
+      renewal_notice_days: 60
+      requirements:
+        - "SEGREGATION_OF_ASSETS"
+        - "INSURANCE_COVERAGE"
+        - "AUDITED_FINANCIALS"
+    wallet:
+      name: "Wallet License"
+      duration_days: 365
+      renewal_notice_days: 30
+      requirements:
+        - "SECURITY_MEASURES"
+        - "USER_PROTECTION"
+    mining:
+      name: "Mining License"
+      duration_days: 730  # 2 years
+      renewal_notice_days: 90
+      requirements:
+        - "ENERGY_REPORTING"
+        - "TAX_COMPLIANCE"
+        - "ENVIRONMENTAL_ASSESSMENT"
+
+  # Obligation templates by license type
+  obligation_templates:
+    exchange:
+      - type: "REPORT"
+        category: "FINANCIAL"
+        title: "Monthly Financial Report"
+        frequency: "MONTHLY"
+        due_in_days: 15
+        priority: "HIGH"
+      - type: "REPORT"
+        category: "TRANSACTION"
+        title: "Suspicious Transaction Report"
+        frequency: "ONCE"
+        due_in_days: 1
+        priority: "CRITICAL"
+        recurring: false
+      - type: "AUDIT"
+        category: "EXTERNAL"
+        title: "Annual External Audit"
+        frequency: "ANNUALLY"
+        due_in_days: 30
+        priority: "HIGH"
+    custodial:
+      - type: "REPORT"
+        category: "ASSETS"
+        title: "Custody Asset Report"
+        frequency: "MONTHLY"
+        due_in_days: 10
+        priority: "HIGH"
+      - type: "CERTIFICATION"
+        category: "SECURITY"
+        title: "Security Certification Renewal"
+        frequency: "ANNUALLY"
+        due_in_days: 60
+        priority: "MEDIUM"
+
+  # Violation severity to penalty mapping
+  penalty_matrix:
+    info:
+      - type: "WARNING"
+        max_amount: 0
+    minor:
+      - type: "WARNING"
+        max_amount: 0
+      - type: "REPRIMAND"
+        max_amount: 10000
+    moderate:
+      - type: "FINE"
+        max_amount: 50000
+      - type: "REPRIMAND"
+        max_amount: 10000
+    major:
+      - type: "FINE"
+        max_amount: 500000
+      - type: "SUSPENSION"
+        max_amount: 0
+    critical:
+      - type: "REVOCATION"
+        max_amount: 0
+      - type: "SUSPENSION"
+        max_amount: 0
+      - type: "PROHIBITION"
+        max_amount: 0
+
+  # Enforcement actions
+  enforcement_actions:
+    - type: "WARNING"
+      threshold_severity: "INFO"
+      description: "Formal warning issued"
+    - type: "REPRIMAND"
+      threshold_severity: "MINOR"
+      description: "Formal reprimand recorded"
+    - type: "FINE"
+      threshold_severity: "MODERATE"
+      description: "Monetary penalty"
+    - type: "SUSPENSION"
+      threshold_severity: "MAJOR"
+      description: "License suspension"
+    - type: "REVOCATION"
+      threshold_severity: "CRITICAL"
+      description: "License revocation"
+
+# Security Configuration
+security:
+  jwt:
+    secret: "change-this-secret-in-production"
+    expiry_hours: 8
+    algorithm: "HS256"
+  roles:
+    - "ADMIN"
+    - "COMPLIANCE_OFFICER"
+    - "INVESTIGATOR"
+    - "AUDITOR"
+    - "VIEWER"
+
+# Retention Settings
+retention:
+  violations_years: 7
+  penalties_years: 7
+  obligations_years: 5
+  audit_logs_years: 7

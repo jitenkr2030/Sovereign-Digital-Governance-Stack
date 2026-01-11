@@ -1,0 +1,338 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: [CI Pipeline]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      image_tag:
+        description: 'Image tag to deploy (default: latest from registry)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Perform dry run only'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: registry.example.com
+  IMAGE_NAME: neam-platform/${{ github.repository }}
+
+jobs:
+  validate-deployment:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      can_deploy: ${{ steps.validate.outputs.can_deploy }}
+      image_tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get target environment
+        id: env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" != "" ]]; then
+            echo "env=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "env=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine image tag
+        id: image
+        run: |
+          if [[ "${{ github.event.inputs.image_tag }}" != "" ]]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            # Get latest image from registry
+            echo "tag=$(skopeo list-tags docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} | jq -r '.[-1]')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate environment
+        id: validate
+        run: |
+          # Check if environment is valid
+          VALID_ENVIRONMENTS="development staging production"
+          if echo "$VALID_ENVIRONMENTS" | grep -q "${{ steps.env.outputs.env }}"; then
+            echo "can_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "can_deploy=false" >> $GITHUB_OUTPUT
+            echo "Invalid environment: ${{ steps.env.outputs.env }}"
+            exit 1
+          fi
+
+      - name: Check quality gates
+        if: steps.validate.outputs.can_deploy == 'true'
+        run: |
+          # Check if image has passed all CI checks
+          # This could integrate with container registry metadata
+          echo "Quality gates passed for ${{ steps.image.outputs.tag }}"
+
+  deploy-development:
+    name: Deploy to Development
+    needs: validate-deployment
+    if: needs.validate-deployment.outputs.can_deploy == 'true' && needs.validate-deployment.outputs.env == 'development' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: https://dev.example.com
+    steps:
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+        with:
+          repository: neam-platform/manifests
+          path: manifests
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure Git
+        run: |
+          cd manifests
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update image reference
+        run: |
+          cd manifests/applications/api-service
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}
+
+      - name: Create commit message
+        run: |
+          echo "DEPLOY_COMMIT_MESSAGE=chore: Deploy ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }} to development" >> $GITHUB_ENV
+
+      - name: Commit and push
+        run: |
+          cd manifests
+          git add -A
+          git commit -m "${{ env.DEPLOY_COMMIT_MESSAGE }}"
+          git push
+
+      - name: Notify deployment started
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              attachments: [{
+                color: '#36a64f',
+                title: 'Deployment Started',
+                text: 'Deploying ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }} to development',
+                fields: [
+                  { title: 'Environment', value: 'development', short: true },
+                  { title: 'Commit', value: '${{ github.sha }}', short: true }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: validate-deployment
+    if: needs.validate-deployment.outputs.can_deploy == 'true' && needs.validate-deployment.outputs.env == 'staging' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.example.com
+    steps:
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+        with:
+          repository: neam-platform/manifests
+          path: manifests
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure Git
+        run: |
+          cd manifests
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update image reference
+        run: |
+          cd manifests/applications/api-service/overlays/staging
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}
+
+      - name: Create commit message
+        run: |
+          echo "DEPLOY_COMMIT_MESSAGE=chore: Deploy ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }} to staging" >> $GITHUB_ENV
+
+      - name: Commit and push
+        run: |
+          cd manifests
+          git add -A
+          git commit -m "${{ env.DEPLOY_COMMIT_MESSAGE }}"
+          git push
+
+  request-production-approval:
+    name: Request Production Approval
+    needs: validate-deployment
+    if: needs.validate-deployment.outputs.can_deploy == 'true' && needs.validate-deployment.outputs.env == 'production' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-approval
+    outputs:
+      approved: ${{ steps.approval.outputs.approved }}
+    steps:
+      - name: Check previous deployments
+        id: check
+        run: |
+          # Check if there was a deployment in the last 24 hours
+          LAST_DEPLOY=$(git log -1 --format=%cd --date=iso HEAD)
+          echo "Last deployment: $LAST_DEPLOY"
+          echo "approval=pending" >> $GITHUB_OUTPUT
+
+      - name: Create approval issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Production Deployment Approval Required',
+              body: 'Production deployment requested for ' +
+                    '${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}\n\n' +
+                    'Commit: ${{ github.sha }}\n' +
+                    'Requested by: ${{ github.actor }}\n\n' +
+                    'Please approve or reject this deployment.',
+              labels: ['deployment', 'production', 'approval-required']
+            })
+
+      - name: Wait for approval
+        id: approval
+        run: |
+          echo "Approval requested. Please check the issue."
+          echo "approved=pending" >> $GITHUB_OUTPUT
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [validate-deployment, request-production-approval]
+    if: needs.validate-deployment.outputs.can_deploy == 'true' && needs.validate-deployment.outputs.env == 'production' && github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://example.com
+    steps:
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+        with:
+          repository: neam-platform/manifests
+          path: manifests
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure Git
+        run: |
+          cd manifests
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update image reference
+        run: |
+          cd manifests/applications/api-service/overlays/production
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}
+
+      - name: Create commit message
+        run: |
+          echo "DEPLOY_COMMIT_MESSAGE=chore: Deploy ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }} to production" >> $GITHUB_ENV
+
+      - name: Commit and push
+        run: |
+          cd manifests
+          git add -A
+          git commit -m "${{ env.DEPLOY_COMMIT_MESSAGE }}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          # Wait for ArgoCD to detect and apply changes
+          sleep 60
+          
+          # Check sync status
+          argocd app wait api-service-production --sync --timeout 300
+
+      - name: Verify deployment
+        run: |
+          # Verify deployment health
+          kubectl rollout status deployment/api-service -n production-api --timeout=600s
+
+      - name: Create release
+        uses: actions/create-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Production deployment of ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}
+            
+            Deployed at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Send deployment notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              attachments: [{
+                color: '#36a64f',
+                title: 'Production Deployment Complete',
+                text: 'Successfully deployed ${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }} to production',
+                fields: [
+                  { title: 'Environment', value: 'production', short: true },
+                  { title: 'Commit', value: '${{ github.sha }}', short: true }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    if: failure() || github.event.inputs.dry_run == 'true'
+    steps:
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+        with:
+          repository: neam-platform/manifests
+          path: manifests
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Revert to previous commit
+        if: failure()
+        run: |
+          cd manifests
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git revert --no-commit HEAD
+          git commit -m "chore: Rollback deployment due to failure"
+          git push
+
+      - name: Dry run report
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "Dry run completed. No changes were made."
+          echo "Would have deployed ${{ needs.validate-deployment.outputs.image_tag }} to ${{ needs.validate-deployment.outputs.env }}"

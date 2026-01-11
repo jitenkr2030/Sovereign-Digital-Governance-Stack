@@ -1,0 +1,71 @@
+# ============================================
+# Regulatory Reporting Service - .dockerignore
+# ============================================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Editor directories
+.idea/
+.vscode/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Test files
+__tests__/
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Database
+*.sqlite
+*.db
+*.sql
+
+# Docker
+docker-compose.override.yml
+docker-compose.*.yml

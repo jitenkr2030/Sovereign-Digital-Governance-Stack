@@ -1,0 +1,243 @@
+# TimescaleDB Configuration for Time-Series Data
+# Hypertable for audit trails, metrics, and sensor data
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timescaledb-config
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-timescaledb
+data:
+  timescaledb.conf: |
+    # TimescaleDB tuning parameters
+    # Note: Most tuning is done via PostgreSQL parameters above
+    # This file is for TimescaleDB-specific settings
+
+    # Background worker configuration
+    max_background_workers = 8
+    background_worker_maintenance_workers = 2
+
+    # Compression settings
+    timescaledb.max_background_workers = 8
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: neam-timescaledb
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-timescaledb
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/component: timeseries-database
+    app.kubernetes.io/part-of: neam
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:15.5
+
+  # Storage - Larger for time-series data
+  storage:
+    storageClass: nvme-ssd
+    size: 500Gi
+    mountPath: "/var/lib/postgresql/data"
+    keep: true
+
+  # Resources - Optimized for write-heavy workloads
+  resources:
+    requests:
+      cpu: "4"
+      memory: "16Gi"
+    limits:
+      cpu: "8"
+      memory: "32Gi"
+
+  # Bootstrap with TimescaleDB
+  bootstrap:
+    initdb:
+      database: neam_metrics
+      owner: neam_metrics_user
+      encoding: "UTF8"
+      locale: "en_US.UTF-8"
+      preInitScript: |
+        -- Enable TimescaleDB
+        CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+        CREATE EXTENSION IF NOT EXISTS pg_cron;
+        CREATE EXTENSION IF NOT EXISTS pg_partman;
+
+  # PostgreSQL Configuration optimized for time-series
+  postgresql:
+    parameters:
+      shared_buffers: "4GB"
+      max_connections: "1000"
+      effective_cache_size: "12GB"
+      work_mem: "64MB"
+      maintenance_work_mem: "1GB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "64MB"
+      max_wal_size: "4GB"
+      min_wal_size: "1GB"
+      wal_compression: on
+      log_statement: "none"
+      log_min_duration_statement: "1000"
+      log_autovacuum_min_duration: "0"
+      autovacuum_max_workers: "4"
+      autovacuum_naptime: "10s"
+
+  # Continuous Aggregates Refresh Job
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://neam-backups/timescaledb
+      endpointURL: http://minio.neam-storage:9000
+      s3Credentials:
+        accessKeyId:
+          name: minio-credentials
+          key: accesskey
+        secretAccessKey:
+          name: minio-credentials
+          key: secretkey
+      retentionPolicy: "30d"
+
+  # Monitoring
+  monitoring:
+    customQueriesConfigMap:
+      - name: timescaledb-monitoring-queries
+        key: queries.yaml
+
+  # Affinity - Separate from primary PostgreSQL
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: neam-timescaledb
+          topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                  - timeseries
+
+  # Security Context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-timescaledb
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-timescaledb
+    app.kubernetes.io/component: timeseries-database
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/name: neam-timescaledb
+
+---
+# Database Roles and Permissions for TimescaleDB
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timescaledb-schemas
+  namespace: neam-database
+  labels:
+    app.kubernetes.io/name: neam-timescaledb
+data:
+  01-init-schemas.sql: |
+    -- Create hypertables for time-series data
+
+    -- Audit Events Hyper table
+    CREATE TABLE IF NOT EXISTS audit_events (
+      time TIMESTAMPTZ NOT NULL,
+      event_id UUID NOT NULL,
+      event_type VARCHAR(100) NOT NULL,
+      user_id VARCHAR(100),
+      action VARCHAR(200),
+      resource_type VARCHAR(100),
+      resource_id VARCHAR(200),
+      metadata JSONB,
+      ip_address INET,
+      user_agent TEXT
+    );
+
+    SELECT create_hypertable('audit_events', 'time');
+
+    -- Enable compression
+    ALTER TABLE audit_events SET (
+      timescaledb.compress,
+      timescaledb.compress_segmentby = 'event_type'
+    );
+
+    -- Create compression policy (compress data older than 7 days)
+    SELECT add_compression_policy('audit_events', INTERVAL '7 days');
+
+    -- Create continuous aggregate for hourly event counts
+    CREATE MATERIALIZED VIEW audit_events_hourly
+    WITH (timescaledb.continuous) AS
+    SELECT
+      time_bucket('1 hour', time) AS bucket,
+      event_type,
+      COUNT(*) AS event_count,
+      COUNT(DISTINCT user_id) AS unique_users
+    FROM audit_events
+    GROUP BY bucket, event_type;
+
+    SELECT add_continuous_aggregate_policy('audit_events_hourly',
+      start_offset => INTERVAL '1 hour',
+      end_offset => INTERVAL '1 minute',
+      schedule_interval => INTERVAL '1 hour');
+
+    -- System Metrics Hyper table
+    CREATE TABLE IF NOT EXISTS system_metrics (
+      time TIMESTAMPTZ NOT NULL,
+      host VARCHAR(100),
+      service VARCHAR(100),
+      metric_name VARCHAR(100) NOT NULL,
+      metric_value DOUBLE PRECISION,
+      labels JSONB
+    );
+
+    SELECT create_hypertable('system_metrics', 'time');
+    ALTER TABLE system_metrics SET (
+      timescaledb.compress,
+      timescaledb.compress_segmentby = 'host, service, metric_name'
+    );
+
+    -- Financial Transactions Hyper table
+    CREATE TABLE IF NOT EXISTS financial_transactions (
+      time TIMESTAMPTZ NOT NULL,
+      transaction_id UUID NOT NULL,
+      transaction_type VARCHAR(50),
+      amount DECIMAL(18, 2),
+      currency VARCHAR(3),
+      source_account VARCHAR(50),
+      destination_account VARCHAR(50),
+      status VARCHAR(20),
+      metadata JSONB
+    );
+
+    SELECT create_hypertable('financial_transactions', 'time');
+    ALTER TABLE financial_transactions SET (
+      timescaledb.compress,
+      timescaledb.compress_segmentby = 'transaction_type'
+    );
+
+    -- Retention policies
+    SELECT add_retention_policy('audit_events', INTERVAL '2 years');
+    SELECT add_retention_policy('system_metrics', INTERVAL '90 days');
+    SELECT add_retention_policy('financial_transactions', INTERVAL '7 years');

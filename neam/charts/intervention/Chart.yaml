@@ -1,0 +1,11 @@
+apiVersion: v2
+name: intervention
+description: NEAM Platform Intervention Service - Automated response actions
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: library
+    version: "1.0.0"
+    repository: "file://../library"

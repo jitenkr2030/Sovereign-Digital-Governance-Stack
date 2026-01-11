@@ -1,0 +1,245 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: spire
+  labels:
+    app: spire-server
+data:
+  spire-server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      trust_domain = "neam.internal"
+      data_dir = "/run/spire/server/data"
+      log_level = "INFO"
+      default_svid_ttl = "24h"
+      ca_key_type = "EC P-256"
+
+      # Security hardening
+      experimental = {
+        allowed_svid_renewal_processing_window = "1h"
+        allowed_burst_renewal_retry_attempts = 5
+      }
+    }
+
+    plugins {
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/server/data/datastore.sqlite3"
+          max_open_connections = 10
+          max_idle_connections = 5
+          conn_max_lifetime = "300s"
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          keys_file = "/run/spire/server/data/keys.json"
+        }
+      }
+
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "neam-cluster"
+        }
+      }
+
+      NodeResolver "k8s_psat" {
+        plugin_data {
+          enabled = true
+        }
+      }
+
+      UpstreamAuthority "disk" {
+        plugin_data {
+          cert_file = "/run/spire/server/config/upstream.crt"
+          key_file = "/run/spire/server/config/upstream.key"
+        }
+      }
+    }
+
+    health_checks {
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+    }
+
+    telemetry {
+      prometheus {
+        enabled = true
+        port = 2112
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-bootstrap
+  namespace: spire
+data:
+  entry.conf: |
+    # Registration entry configuration for NEAM platform services
+    # These entries define the SPIFFE ID mapping for platform workloads
+
+    # Infrastructure Services
+    - spiffe_id: "spiffe://neam.internal/infrastructure/k8s/kube-system"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:kube-system
+        - k8s:sa:kube-system
+      ttl: "72h"
+
+    - spiffe_id: "spiffe://neam.internal/infrastructure/monitoring/prometheus"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:monitoring
+        - k8s:sa:prometheus
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/infrastructure/monitoring/grafana"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:monitoring
+        - k8s:sa:grafana
+      ttl: "24h"
+
+    # Core Platform Services
+    - spiffe_id: "spiffe://neam.internal/core/api-gateway"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:core
+        - k8s:sa:api-gateway
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/core/auth-service"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:core
+        - k8s:sa:auth-service
+      ttl: "24h"
+
+    # Data Services
+    - spiffe_id: "spiffe://neam.internal/data/postgres-primary"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:data
+        - k8s:sa:postgres-primary
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/data/redis-cache"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:data
+        - k8s:sa:redis-cache
+      ttl: "24h"
+
+    # Finance Services
+    - spiffe_id: "spiffe://neam.internal/finance/api/payment-processor"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:finance
+        - k8s:sa:payment-processor
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/finance/worker/transaction-auditor"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:finance
+        - k8s:sa:transaction-auditor
+      ttl: "24h"
+
+    # Intelligence Services
+    - spiffe_id: "spiffe://neam.internal/intelligence/api/analytics-engine"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:intelligence
+        - k8s:sa:analytics-engine
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/intelligence/worker/signal-processor"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:intelligence
+        - k8s:sa:signal-processor
+      ttl: "24h"
+
+    # Development and Staging
+    - spiffe_id: "spiffe://neam.internal/dev/api/test-api"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:dev
+        - k8s:sa:test-api
+      ttl: "24h"
+
+    - spiffe_id: "spiffe://neam.internal/staging/api/staging-api"
+      parent_id: "spiffe://neam.internal/spire-server"
+      selectors:
+        - k8s:ns:staging
+        - k8s:sa:staging-api
+      ttl: "24h"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-attestation-policies
+  namespace: spire
+  labels:
+    app: spire-server
+data:
+  policies.conf: |
+    # SPIFFE Attestation Policies
+    # These policies define the conditions under which workloads can receive SPIFFE IDs
+
+    # Global attestation policy - all workloads must meet these requirements
+    global_policy:
+      require_kubernetes_service_account: true
+      require_container_image_digest: true
+      allowed_container_registries:
+        - "neam-container-registry.neam.internal"
+        - "docker.io"
+        - "gcr.io"
+      max_container_privilege_level: "restricted"
+
+    # Environment-specific policies
+    production_policy:
+      require_namespace_label:
+        key: "environment"
+        value: "production"
+      require_pod_anti_affinity: true
+      disallow_host_network: true
+      disallow_privileged_containers: true
+
+    staging_policy:
+      require_namespace_label:
+        key: "environment"
+        value: "staging"
+      disallow_host_network: true
+
+    development_policy:
+      require_namespace_label:
+        key: "environment"
+        value: "development"
+      allow_host_network: false
+
+    # Service type policies
+    frontend_services:
+      allowed_service_account_patterns:
+        - "*api"
+        - "*gateway"
+      require_liveness_probe: true
+      require_readiness_probe: true
+
+    backend_services:
+      allowed_service_account_patterns:
+        - "*service"
+        - "*worker"
+      require_liveness_probe: true
+
+    data_services:
+      allowed_service_account_patterns:
+        - "*database"
+        - "*cache"
+        - "*storage"
+      require_persistence: true
+      disallow_internet_egress: true

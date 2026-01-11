@@ -1,0 +1,133 @@
+# NEAM Simulation Service Configuration
+# What-If Analysis and Scenario Simulation Engine
+
+# Application Configuration
+app:
+  name: "NEAM Simulation Service"
+  version: "1.0.0"
+  host: "0.0.0.0"
+  port: 8083
+  debug: false
+  title: "NEAM Economic Simulation API"
+  description: "Monte Carlo, Economic Model, and Scenario Simulation Engine"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+
+# Redis Configuration (for state caching)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: null
+  db: 0
+  key_prefix: "neam:simulation:"
+  connection_pool_size: 10
+
+# PostgreSQL Configuration (for historical data)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "neam_user"
+  password: "neam_password"
+  name: "neam_db"
+  pool_size: 5
+  max_overflow: 10
+
+# ClickHouse Configuration (for time-series data)
+clickhouse:
+  host: "10.112.2.4"
+  port: 8123
+  username: "neam_user"
+  password: "neam_password"
+  database: "neam_analytics"
+  session_timeout: 30
+
+# Kafka Configuration (for event streaming)
+kafka:
+  bootstrap_servers:
+    - "10.112.2.4:9092"
+  topic_prefix: "neam."
+  simulation_results_topic: "simulation.results"
+  simulation_requests_topic: "simulation.requests"
+  consumer_group: "neam-simulation-service"
+  auto_offset_reset: "latest"
+
+# Simulation Engine Configuration
+simulation:
+  # Monte Carlo Settings
+  monte_carlo:
+    default_iterations: 10000
+    max_iterations: 100000
+    confidence_level: 0.95
+    random_seed: 42
+
+  # Economic Model Settings
+  economic_model:
+    forecast_horizon_months: 24
+    max_regions: 100
+    sectors:
+      - manufacturing
+      - services
+      - agriculture
+      - technology
+      - retail
+      - construction
+      - healthcare
+      - finance
+
+  # Scenario Settings
+  scenario:
+    max_concurrent_simulations: 50
+    default_timeout_seconds: 300
+    max_timeout_seconds: 3600
+    result_retention_hours: 72
+
+  # Sensitivity Analysis Settings
+  sensitivity:
+    default_sample_size: 1000
+    max_sample_size: 10000
+    parameter_ranges:
+      inflation_rate: [-0.05, 0.15]
+      gdp_growth: [-0.10, 0.08]
+      unemployment_rate: [0.02, 0.20]
+      interest_rate: [0.0, 0.10]
+      exchange_rate_change: [-0.20, 0.20]
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "/var/log/neam/simulation.log"
+  max_size_mb: 100
+  backup_count: 5
+
+# Performance Configuration
+performance:
+  worker_threads: 4
+  max_concurrent_requests: 100
+  request_timeout_seconds: 30
+  memory_limit_mb: 2048
+
+# External API Endpoints (if needed)
+external_apis:
+  census_api:
+    base_url: "https://api.census.gov/data"
+    timeout: 10
+  world_bank_api:
+    base_url: "https://api.worldbank.org/v2"
+    timeout: 15
+  imf_api:
+    base_url: "https://dataservices.imf.org/REST"
+    timeout: 15
+
+# Security Configuration
+security:
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+    - "https://dashboard.neam.internal"
+  rate_limit:
+    requests_per_minute: 100
+    burst_size: 20
+  api_keys:
+    enabled: false
+    header_name: "X-API-Key"

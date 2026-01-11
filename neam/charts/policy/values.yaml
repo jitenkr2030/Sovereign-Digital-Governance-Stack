@@ -1,0 +1,201 @@
+# Default values for policy service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "policy"
+fullnameOverride: "neam-policy"
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: neam-platform/policy
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-policy"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-policy-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "pqr678"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-policy"
+
+envFrom:
+  - secretRef:
+      name: policy-secrets
+  - configMapRef:
+      name: policy-config
+
+command:
+  - "/policy"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/policy
+    readOnly: true
+
+volumes:
+  - name: config
+    configMap:
+      name: policy-config
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: false
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      database:
+        url: postgresql://postgres:5432/neam
+        max_open_conns: 10
+        max_idle_conns: 5
+      
+      cache:
+        redis_url: redis://redis:6379
+        ttl: 10m
+      
+      evaluation:
+        timeout: 5s
+        max_rules: 1000
+      
+      audit:
+        enabled: true
+        storage: database
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity: {}
+
+tolerations: []
+
+terminationGracePeriodSeconds: 30
+
+priorityClassName: medium-priority
+
+# Autoscaling
+autoscaling:
+  enabled: false
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

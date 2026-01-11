@@ -1,0 +1,239 @@
+# Default values for feature-store service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "feature-store"
+fullnameOverride: "neam-feature-store"
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: neam-platform/feature-store
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-feature-store"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-feature-store-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "ghi789"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-feature-store"
+
+envFrom:
+  - secretRef:
+      name: feature-store-secrets
+  - configMapRef:
+      name: feature-store-config
+
+command:
+  - "/feature-store"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/feature-store
+    readOnly: true
+  - name: data
+    mountPath: /data
+
+volumes:
+  - name: config
+    configMap:
+      name: feature-store-config
+  - name: data
+    persistentVolumeClaim:
+      claimName: feature-store-data
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "2"
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: false
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      storage:
+        type: redis
+        redis_url: redis://redis:6379
+        ttl: 24h
+      
+      online:
+        enabled: true
+        cache_size: 1000000
+      
+      offline:
+        enabled: true
+        s3_bucket: neam-features
+        path_prefix: features/
+      
+      materialization:
+        enabled: true
+        interval: 1h
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: true
+  size: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  annotations:
+    helm.sh/resource-policy: keep
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - feature-store
+          topologyKey: kubernetes.io/hostname
+
+tolerations: []
+
+terminationGracePeriodSeconds: 30
+
+priorityClassName: medium-priority
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

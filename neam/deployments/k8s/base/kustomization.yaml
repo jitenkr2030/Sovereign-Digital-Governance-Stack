@@ -1,0 +1,45 @@
+# NEAM Kubernetes Base Kustomization
+# Common resources for all environments
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: neam-system
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - rbac.yaml
+  - services/
+  - deployments/
+
+configMapGenerator:
+  - name: neam-config
+    files:
+      - config.yaml=config/default.yaml
+
+secretGenerator:
+  - name: neam-secrets
+    envs:
+      - secrets/default.env
+    type: Opaque
+
+images:
+  - name: neamacr.azurecr.io/neam/api-gateway
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/sensing
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/intelligence
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/intervention
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/reporting
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/security
+    newTag: v1.0.0
+  - name: neamacr.azurecr.io/neam/frontend
+    newTag: v1.0.0
+
+generatorOptions:
+  disableNameSuffixHash: true

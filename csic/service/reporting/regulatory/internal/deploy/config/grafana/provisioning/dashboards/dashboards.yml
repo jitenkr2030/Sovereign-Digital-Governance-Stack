@@ -1,0 +1,22 @@
+apiVersion: 1
+
+providers:
+  # Regulatory Reporting Dashboards
+  - name: 'Regulatory Reporting Service'
+    folder: 'CSIC / Reporting'
+    type: file
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/reporting
+      foldersFromFilesStructure: true
+
+  # Infrastructure Dashboards
+  - name: 'Infrastructure'
+    folder: 'CSIC / Infrastructure'
+    type: file
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/infrastructure
+      foldersFromFilesStructure: true

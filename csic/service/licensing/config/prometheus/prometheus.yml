@@ -1,0 +1,98 @@
+# Prometheus Configuration for CSIC Licensing Service
+# This configuration defines the scraping targets, alerting rules,
+# and recording rules for the Licensing & Compliance module.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'csic-development'
+    environment: 'development'
+    service: 'licensing-service'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# Load alerting and recording rules
+rule_files:
+  - 'alerts.yml'
+  - 'recording_rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Self monitoring - Prometheus metrics
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # CSIC Licensing Service metrics
+  - job_name: 'csic-licensing-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['licensing-service:9091']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+      - source_labels: [__metrics_path__]
+        target_label: metrics_path
+      - source_labels: [job]
+        target_label: csic_job
+
+  # PostgreSQL metrics (via postgres_exporter)
+  - job_name: 'csic-postgresql'
+    static_configs:
+      - targets: ['licensing-db:9187']
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+
+  # Redis metrics (via redis_exporter)
+  - job_name: 'csic-redis'
+    static_configs:
+      - targets: ['licensing-cache:9121']
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+
+  # Kafka metrics (via kafka_exporter)
+  - job_name: 'csic-kafka'
+    static_configs:
+      - targets: ['kafka:9308']
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+
+  # Docker daemon metrics
+  - job_name: 'docker-daemon'
+    static_configs:
+      - targets: ['localhost:9323']
+    metrics_path: /metrics
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'

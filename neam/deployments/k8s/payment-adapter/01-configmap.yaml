@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-adapter-config
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+    version: v1
+  annotations:
+    description: "NEAM Payment Adapter configuration for production deployment"
+data:
+  # Service Configuration
+  SERVICE_NAME: "payment-adapter"
+  SERVICE_HOST: "0.0.0.0"
+  SERVICE_PORT: "8084"
+  ENVIRONMENT: "production"
+
+  # Kafka Configuration
+  KAFKA_BROKERS: "neam-kafka-cluster-kafka-bootstrap:9092"
+  KAFKA_CONSUMER_GROUP: "neam-payment-group-prod"
+  KAFKA_INPUT_TOPIC: "payments.raw"
+  KAFKA_OUTPUT_TOPIC: "payments.normalized"
+  KAFKA_DLQ_TOPIC: "payments.dlq"
+  KAFKA_RETRY_TOPIC: "payments.retry"
+  KAFKA_VERSION: "2.8.0"
+  KAFKA_MAX_OPEN_REQUESTS: "100"
+  KAFKA_SESSION_TIMEOUT: "30s"
+  KAFKA_HEARTBEAT_INTERVAL: "3s"
+
+  # Redis Configuration
+  REDIS_ADDR: "neam-redis-master:6379"
+  REDIS_PASSWORD: "${REDIS_PASSWORD}"
+  REDIS_DB: "0"
+  REDIS_POOL_SIZE: "100"
+  REDIS_IDEMPOTENCY_TTL: "24h"
+
+  # Processing Configuration
+  PROCESSING_MODE: "realtime"
+  WORKER_COUNT: "10"
+  BATCH_SIZE: "100"
+  BATCH_TIMEOUT: "5s"
+  BATCH_DIRECTORY: "/data/batch/payments"
+  PARALLEL_FILES: "5"
+
+  # Retry Configuration
+  MAX_RETRIES: "5"
+  INITIAL_DELAY: "100ms"
+  MAX_DELAY: "10s"
+  MULTIPLIER: "2.0"
+  JITTER: "true"
+  JITTER_FACTOR: "0.1"
+  DLQ_MAX_RETRIES: "3"
+
+  # Logging Configuration
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  LOG_OUTPUT_PATH: "/var/log/neam"
+
+  # Monitoring Configuration
+  MONITORING_ENABLED: "true"
+  METRICS_PORT: "9090"
+  METRICS_PATH: "/metrics"
+  HEALTH_PATH: "/health"
+  READINESS_PATH: "/ready"
+
+  # Batch Configuration
+  BATCH_SUPPORTED_FORMATS: "xml,txt,json"
+  BATCH_MAX_FILE_SIZE: "104857600"
+  BATCH_SCAN_INTERVAL: "1m"
+  BATCH_ARCHIVE_PROCESSED: "true"
+  BATCH_ARCHIVE_PATH: "/data/batch/archive"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-adapter-env
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+data:
+  # Additional environment variables can be added here
+  # These will be merged with the main configmap
+  GODEBUG: "gctrace=1"
+  GOMAXPROCS: "4"
+  GOMEMLIMIT: "4GiB"

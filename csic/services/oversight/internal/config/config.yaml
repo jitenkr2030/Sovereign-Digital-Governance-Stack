@@ -1,0 +1,102 @@
+# CSIC Exchange Oversight Service Configuration
+# All configuration can be overridden by environment variables with CSIC_ prefix
+
+# Application Environment
+environment: "development"
+
+# Server Configuration
+server:
+  http_port: 8080
+  grpc_port: 50051
+  read_timeout: 15
+  write_timeout: 15
+  max_header_bytes: 1048576
+  shutdown_timeout: 30
+
+# PostgreSQL Database Configuration
+postgres:
+  host: "localhost"
+  port: 5432
+  database: "csic_oversight"
+  user: "csic_admin"
+  password: "secure_password_change_in_production"
+  max_connections: 25
+  min_connections: 5
+  max_conn_lifetime_minutes: 30
+  ssl_mode: "require"
+  migration_path: "./migrations"
+
+# Redis Cache Configuration
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 100
+  min_idle_conns: 10
+  key_prefix: "csic:oversight:"
+  ttl: 3600
+
+# Apache Kafka Configuration
+kafka:
+  brokers:
+    - "localhost:9092"
+  trade_topic: "market.trades.raw"
+  alert_topic: "risk.alerts"
+  throttle_topic: "control.commands"
+  report_topic: "reporting.centralbank"
+  consumer_group: "oversight-group"
+  producer_ack: -1
+  batch_size: 100
+  batch_timeout_ms: 10
+
+# OpenSearch Configuration
+opensearch:
+  addresses:
+    - "http://localhost:9200"
+  index_prefix: "csic"
+  trade_index: "trades"
+  username: "admin"
+  password: "admin"
+  max_retries: 3
+  retry_on_status:
+    - 502
+    - 503
+    - 504
+  transport_timeout: 30
+  bulk_flush_interval: 5
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+  path: "/metrics"
+  histogram_buckets:
+    - 0.1
+    - 0.5
+    - 1
+    - 5
+    - 10
+    - 30
+    - 60
+    - 120
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output_path: "stdout"
+  json_format: true
+
+# Abuse Detection Configuration
+abuse_detection:
+  wash_trading_window_secs: 60
+  spoofing_order_threshold: 0.5
+  pump_dump_volume_multiplier: 5.0
+  confidence_threshold: 0.75
+
+# Health Scoring Weights
+health_scoring:
+  uptime_weight: 0.40
+  latency_weight: 0.30
+  liquidity_weight: 0.30

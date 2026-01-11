@@ -1,0 +1,143 @@
+# Smart Cities Service Configuration
+# Port: 8090 | Schema: smart_cities | Redis Prefix: csic:smart_cities:
+
+app:
+  host: "0.0.0.0"
+  port: 8090
+  name: "smart-cities-service"
+  environment: "development"
+
+# PostgreSQL Configuration (shared instance + table prefix isolation)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "backend_shared"
+  table_prefix: "sess_8ab84f7d_smart_cities_"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+# Redis Configuration (key prefix isolation)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "sess:8ab84f7d:smart_cities:"
+  pool_size: 10
+
+# Kafka Configuration for IoT events
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "sess_8ab84f7d_smart_cities_consumer"
+  topics:
+    iot_readings: "sess_8ab84f7d_smart_cities_iot_readings"
+    incidents: "sess_8ab84f7d_smart_cities_incidents"
+    analytics: "sess_8ab84f7d_smart_cities_analytics"
+
+# IoT Configuration
+iot:
+  # Batch processing settings
+  batch_size: 100
+  batch_timeout: 5s
+  # Rate limiting
+  rate_limit_requests: 1000
+  rate_limit_window: 1m
+  # Processing settings
+  max_reading_age: 24h
+  aggregation_window: 15m
+
+# Infrastructure Node Types
+infrastructure:
+  node_types:
+    - traffic_light
+    - traffic_camera
+    - water_pump
+    - power_meter
+    - waste_container
+    - street_light
+    - parking_sensor
+    - air_quality_sensor
+    - noise_sensor
+    - weather_station
+
+# Resource Thresholds
+resources:
+  # Energy thresholds (kWh)
+  energy_warning: 80.0
+  energy_critical: 95.0
+  # Water thresholds (liters/min)
+  water_flow_warning: 90.0
+  water_flow_critical: 98.0
+  # Waste thresholds (percentage full)
+  waste_warning: 70.0
+  waste_critical: 90.0
+  # Air quality thresholds (AQI)
+  aqi_warning: 100
+  aqi_unhealthy: 150
+
+# District Configuration
+districts:
+  - id: "downtown"
+    name: "Downtown"
+    priority: 1
+  - id: "residential_north"
+    name: "North Residential"
+    priority: 2
+  - id: "industrial_east"
+    name: "Industrial East"
+    priority: 3
+  - id: "commercial_west"
+    name: "Commercial West"
+    priority: 4
+
+# Analytics Configuration
+analytics:
+  # Time windows for aggregation
+  real_time_window: 5m
+  hourly_window: 1h
+  daily_window: 24h
+  # Trend detection
+  trend_detection_threshold: 0.1
+  anomaly_detection_sensitivity: 2.0
+
+# Incident Configuration
+incidents:
+  # Priority levels
+  priority_critical: 1
+  priority_high: 2
+  priority_medium: 3
+  priority_low: 4
+  # Auto-assignment
+  auto_assign: true
+  # Response time targets (minutes)
+  response_time_critical: 15
+  response_time_high: 30
+  response_time_medium: 60
+  response_time_low: 240
+
+# Sustainability Targets
+sustainability:
+  # Energy reduction target (percentage)
+  energy_reduction_target: 15.0
+  # Water conservation target (percentage)
+  water_conservation_target: 20.0
+  # Waste reduction target (percentage)
+  waste_reduction_target: 25.0
+  # Carbon emission target (kg CO2)
+  carbon_reduction_target: 1000.0
+
+# Prometheus Metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+  port: 9090
+
+# Logging
+logging:
+  level: "info"
+  format: "json"

@@ -1,0 +1,218 @@
+# Exchange Surveillance Service Configuration Template
+# Copy this file to config.yaml and customize the values
+
+# Application Configuration
+app:
+  name: "csic-exchange-surveillance"
+  environment: "development"  # development, staging, production
+  version: "1.0.0"
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 15   # seconds
+  write_timeout: 15  # seconds
+  idle_timeout: 60   # seconds
+
+# Database Configuration (PostgreSQL + TimescaleDB)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_surveillance"
+  password: "CHANGE_ME_IN_PRODUCTION"
+  name: "csic_surveillance"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+  # TimescaleDB specific settings
+  timescaledb:
+    enabled: true
+    chunk_interval: "7d"       # Compress data into 7-day chunks
+    retention_interval: "365d"  # Keep 1 year of raw data
+
+# Redis Configuration (for caching and real-time processing)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""  # Set password for production
+  db: 0
+  pool_size: 10
+  key_prefix: "csic:surveillance:"
+
+# Kafka Configuration (for event streaming)
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic_prefix: "csic.surveillance."
+  consumer_group: "surveillance-workers"
+  topics:
+    market_ingress: "market.ingress"
+    alerts: "surveillance.alerts"
+    analysis_results: "surveillance.analysis"
+
+# Ingestion Configuration
+ingestion:
+  # WebSocket connection settings
+  websocket:
+    max_connections: 1000
+    ping_interval: 30   # seconds
+    pong_timeout: 10    # seconds
+    max_message_size: 1048576  # 1MB
+
+  # Buffer settings for batch processing
+  buffer:
+    max_size: 10000
+    flush_interval: 1   # seconds
+    batch_size: 100
+
+  # Authentication settings
+  auth:
+    jwt_secret: "CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET"
+    token_expiry: 3600  # seconds
+    require_mtls: false  # Set to true in production
+
+# Analysis Configuration
+analysis:
+  # Wash Trade Detection settings
+  wash_trade:
+    enabled: true
+    time_window: 60        # seconds - analyze trades within this window
+    price_deviation_threshold: 0.01   # 1% - detect price manipulation
+    quantity_similarity_threshold: 0.9  # 90% - detect matching quantities
+    min_trades_for_detection: 3  # minimum trades to trigger detection
+
+  # Spoofing Detection settings
+  spoofing:
+    enabled: true
+    order_lifetime_window: 300  # seconds - how long to track orders
+    large_order_threshold: 0.1  # 10% of daily volume
+    cancellation_rate_threshold: 0.8  # 80% - high cancellation rate
+    bait_order_threshold: 0.05  # 5% of typical order size
+
+  # Price Deviation Detection settings
+  price_deviation:
+    enabled: true
+    global_average_window: 3600  # seconds - 1 hour window
+    deviation_threshold: 0.05    # 5% deviation from global average
+    min_data_points: 100         # minimum data points for calculation
+
+  # Volume Analysis settings
+  volume_analysis:
+    enabled: true
+    anomaly_threshold: 3.0       # 3 standard deviations
+    rolling_window: 86400        # 24 hours in seconds
+
+# Alert Configuration
+alerts:
+  # Severity levels configuration
+  severity_levels:
+    - name: "INFO"
+      auto_resolve: true
+      retention_days: 7
+    - name: "WARNING"
+      auto_resolve: false
+      retention_days: 30
+    - name: "CRITICAL"
+      auto_resolve: false
+      retention_days: 90
+    - name: "FREEZE_ASSETS"
+      auto_resolve: false
+      retention_days: 365
+
+  # Notification settings
+  notification:
+    enabled: true
+    email_enabled: false  # Set to true in production
+    sms_enabled: false
+    webhook_enabled: false  # Set to true in production
+    webhook_url: "https://alerts.csic.gov/webhook"
+
+  # Escalation settings
+  escalation:
+    enabled: true
+    rules:
+      - after_hours: 1
+        notify: ["duty_officer"]
+      - after_hours: 4
+        notify: ["department_head"]
+      - after_hours: 24
+        notify: ["executive"]
+
+# Compliance Integration
+compliance:
+  enabled: true
+  # Endpoint to verify licensed exchanges
+  api_endpoint: "http://localhost:8081"
+  api_timeout: 5   # seconds
+  cache_ttl: 300   # seconds - cache license verification results
+
+# Audit Log Integration
+audit_log:
+  enabled: true
+  endpoint: "http://localhost:8082"
+  batch_size: 100
+  flush_interval: 5  # seconds
+
+# Logging Configuration
+logging:
+  level: "info"      # debug, info, warn, error
+  format: "json"     # json or text
+  output: "stdout"   # stdout, file
+  include_caller: true
+
+  # Structured logging fields
+  fields:
+    service: "exchange-surveillance"
+    environment: "development"
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+
+  # Custom metrics prefix
+  custom:
+    enabled: true
+    prefix: "csic_surveillance"
+
+# Security Configuration
+security:
+  # TLS settings (enable in production)
+  tls:
+    enabled: false
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+
+  # CORS settings
+  cors:
+    enabled: true
+    allowed_origins:
+      - "https://admin.csic.gov"
+      - "https://dashboard.csic.gov"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "PATCH"
+      - "DELETE"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-Request-ID"
+    max_age: 86400  # 24 hours
+
+# Environment Variable Overrides
+# These can be set as environment variables:
+# - DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME
+# - JWT_SECRET
+# - SERVER_PORT

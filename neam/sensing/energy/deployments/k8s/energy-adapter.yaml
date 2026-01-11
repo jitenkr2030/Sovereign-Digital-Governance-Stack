@@ -1,0 +1,357 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: energy-adapter-config
+  namespace: neam
+  labels:
+    app: energy-adapter
+data:
+  CONFIG_YAML: |
+    service:
+      name: "energy-adapter"
+      host: "0.0.0.0"
+      port: 8085
+      environment: "production"
+      shutdown_timeout: 30s
+    iccp:
+      enabled: true
+      sources:
+        - endpoint: "${ICCP_ENDPOINT}"
+          local_tsap: "1.0.1"
+          remote_tsap: "1.0.2"
+          bilateral_table: "${BILATERAL_TABLE}"
+      points_of_interest:
+        - "Frequency"
+        - "Voltage"
+        - "Current"
+        - "Power"
+      timeout: 30s
+      retry_interval: 5s
+      keep_alive: 10s
+    iec61850:
+      enabled: true
+      sources:
+        - endpoint: "${IEC61850_ENDPOINT}"
+          port: 102
+          ied_name: "${IED_NAME}"
+          ap_title: "${AP_TITLE}"
+          ae_qualifier: ${AE_QUALIFIER}
+      points_of_interest:
+        - "MMXU1.Vol"
+        - "MMXU1.A"
+        - "MMXU1.W"
+        - "XCBR1.Pos"
+      timeout: 30s
+      retry_interval: 5s
+      keep_alive: 10s
+    kafka:
+      brokers: "${KAFKA_BROKERS}"
+      output_topic: "energy.telemetry"
+      dlq_topic: "energy.dlq"
+      version: "2.8.0"
+      max_open_requests: 100
+      dial_timeout: 10s
+      write_timeout: 30s
+    session:
+      max_retries: 10
+      initial_delay: 1s
+      max_delay: 60s
+      multiplier: 2.0
+      health_check_interval: 30s
+      reconnect_wait: 5s
+    filtering:
+      deadband_percent: 0.1
+      spike_threshold: 20.0
+      spike_window_size: 5
+      rate_of_change_limit: 5.0
+      quality_filter:
+        - "Good"
+      min_reporting_interval: 100ms
+      max_value: 1000000.0
+      min_value: -1000000.0
+    logging:
+      level: "info"
+      format: "json"
+      output_path: "/var/log/neam"
+      json_format: true
+    monitoring:
+      enabled: true
+      port: 9091
+      path: "/metrics"
+      health_path: "/health"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: energy-adapter-secrets
+  namespace: neam
+  labels:
+    app: energy-adapter
+type: Opaque
+stringData:
+  # Add any sensitive configuration here
+  # Example:
+  # ICCP_PASSWORD: "your-password"
+  # API_KEY: "your-api-key"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: energy-adapter
+  namespace: neam
+  labels:
+    app: energy-adapter
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: energy-adapter
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: energy-adapter
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: energy-adapter
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: energy-adapter
+          image: neam/energy-adapter:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8085
+              name: http
+            - containerPort: 9091
+              name: metrics
+          env:
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: KAFKA_BROKERS
+            - name: ICCP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: ICCP_ENDPOINT
+            - name: IEC61850_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: IEC61850_ENDPOINT
+            - name: IED_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: IED_NAME
+            - name: AP_TITLE
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: AP_TITLE
+            - name: AE_QUALIFIER
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: AE_QUALIFIER
+            - name: BILATERAL_TABLE
+              valueFrom:
+                configMapKeyRef:
+                  name: energy-adapter-config
+                  key: BILATERAL_TABLE
+          envFrom:
+            - secretRef:
+                name: energy-adapter-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /etc/neam
+              readOnly: true
+            - name: logs
+              mountPath: /var/log/neam
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: energy-adapter-config
+        - name: logs
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: energy-adapter
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: energy-adapter
+  namespace: neam
+  labels:
+    app: energy-adapter
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8085
+      targetPort: 8085
+      protocol: TCP
+      name: http
+    - port: 9091
+      targetPort: 9091
+      protocol: TCP
+      name: metrics
+  selector:
+    app: energy-adapter
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: energy-adapter
+  namespace: neam
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: energy-adapter
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: energy-adapter
+  namespace: neam
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - energy-adapter.neam.example.com
+      secretName: energy-adapter-tls
+  rules:
+    - host: energy-adapter.neam.example.com
+      http:
+        paths:
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: energy-adapter
+                port:
+                  number: 9091
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: energy-adapter
+  namespace: neam
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: energy-adapter
+  namespaceSelector:
+    matchNames:
+      - neam
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: energy-adapter-alerts
+  namespace: neam
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: energy-adapter
+      rules:
+        - alert: EnergyAdapterDown
+          expr: up{job="energy-adapter"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Energy adapter is down"
+            description: "The energy adapter has been down for more than 5 minutes"
+        - alert: EnergyAdapterHighLatency
+          expr: histogram_quantile(0.95, rate(energy_adapter_processing_latency_seconds_bucket[5m])) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Energy adapter high latency"
+            description: "Energy adapter processing latency is above 10ms"
+        - alert: EnergyAdapterHighFilterRate
+          expr: rate(energy_adapter_points_filtered_total[5m]) / rate(energy_adapter_points_processed_total[5m]) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High filter rate detected"
+            description: "More than 50% of points are being filtered"
+        - alert: EnergyAdapterConnectionUnhealthy
+          expr: energy_adapter_connection_health < 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Unhealthy connection detected"
+            description: "One or more protocol connections are unhealthy"

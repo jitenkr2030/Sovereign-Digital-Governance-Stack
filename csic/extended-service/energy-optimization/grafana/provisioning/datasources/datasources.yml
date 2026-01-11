@@ -1,0 +1,59 @@
+# Grafana Datasources Configuration
+# Provisioned automatically on startup
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "10s"
+      httpMethod: "GET"
+      manageAlerts: true
+      prometheusVersion: "2.48.0"
+      prometheusType: "Prometheus"
+    secureJsonData:
+      # Add API key if using cloud Prometheus
+      # apiKey: ${PROMETHEUS_API_KEY}
+    version: 1
+    uid: energy-prometheus
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: "10.112.2.4:5432"
+    database: "backend_shared"
+    user: "postgres"
+    isDefault: false
+    editable: true
+    jsonData:
+      sslmode: "disable"
+      maxOpenConns: 25
+      maxIdleConns: 5
+      connMaxLifetime: 300
+      postgresVersion: "1400"  # PostgreSQL 14
+      timescaledb: false
+    secureJsonData:
+      password: "postgres"
+    version: 1
+    uid: energy-postgres
+
+  - name: Redis
+    type: redis
+    access: proxy
+    url: "10.112.2.4:6379"
+    database: 0
+    isDefault: false
+    editable: false
+    jsonData:
+      poolSize: 10
+      timeout: 30
+    secureJsonData:
+      # Add password if Redis requires auth
+      # password: ${REDIS_PASSWORD}
+    version: 1
+    uid: energy-redis

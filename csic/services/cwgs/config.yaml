@@ -1,0 +1,148 @@
+# CSIC Custodial Wallet Governance System Configuration
+# All configuration can be overridden by environment variables with CWGS_ prefix
+
+# Application Configuration
+app:
+  name: "csic-cwgs"
+  environment: "development"
+  http_port: 8081
+  grpc_port: 50052
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_admin"
+  password: "secure_password_change_in_production"
+  name: "cwgs"
+  pool_size: 10
+  max_pool_size: 50
+  connection_timeout: 30
+  ssl_mode: "prefer"
+
+# Redis Configuration (for caching and rate limiting)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:cwgs:"
+  pool_size: 20
+  ttl_seconds: 3600
+
+# Apache Kafka Configuration
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-cwgs-group"
+  topics:
+    wallet_events: "wallet.events"
+    signing_events: "signing.events"
+    emergency_events: "emergency.events"
+    compliance_reports: "compliance.reports"
+  producer:
+    acks: "all"
+    retries: 3
+    batch_size: 16384
+    linger_ms: 5
+
+# HSM Configuration
+hsm:
+  # Use "soft" for development, "pkcs11" for production
+  provider: "soft"
+  # For SoftHSM (development)
+  soft_hsm:
+    library_path: "/usr/lib/softhsm/libsofthsm2.so"
+    token_label: "CSIC CWGS Token"
+    pin: "12345678"
+    slot_id: 0
+  # For PKCS#11 HSM (production)
+  pkcs11:
+    library_path: "/usr/lib/pkcs11/softhsm2.so"
+    slot_id: 0
+    pin: ""
+    key_label_prefix: "csic_cwgs_"
+
+# Key Management Configuration
+key_management:
+  default_algorithm: "ECDSA_SECP256K1"
+  rotation_policy_days: 90
+  max_key_usage_count: 10000
+  backup_keys_count: 3
+
+# Multi-Signature Configuration
+multisig:
+  default_config_id: "b0000000-0000-0000-0000-000000000001"
+  signature_timeout_seconds: 3600
+  max_signers: 10
+  allow_partial_with_escalation: true
+
+# Policy Configuration
+policy:
+  cache_ttl_seconds: 300
+  max_rules_per_policy: 100
+  default_severity: "WARNING"
+
+# Wallet Configuration
+wallet:
+  default_max_tx_limit: 100.0
+  default_daily_limit: 1000.0
+  hot_wallet_threshold: 10.0
+  cold_wallet_threshold: 10000.0
+
+# Emergency Access Configuration
+emergency_access:
+  enabled: true
+  required_approvals: 2
+  operation_timeout_seconds: 300
+  cooldown_seconds: 3600
+  allowed_actions:
+    - "FREEZE_ALL_WALLETS"
+    - "SUSPEND_TRANSACTIONS"
+    - "EMERGENCY_KEY_ROTATION"
+    - "ENABLE_READ_ONLY"
+
+# Audit Configuration
+audit:
+  enabled: true
+  retention_days: 365
+  batch_size: 100
+  async_write: true
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  metrics_port: 9090
+  metrics_path: "/metrics"
+  health_check_interval: 30
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  include_timestamp: true
+  include_source: true
+
+# Security Configuration
+security:
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+  # CORS settings
+  cors:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    max_age_seconds: 3600
+  # Request size limits
+  max_request_size_mb: 10
+  max_body_size_mb: 10

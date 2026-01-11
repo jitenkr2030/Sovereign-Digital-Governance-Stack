@@ -1,0 +1,239 @@
+version: '3.8'
+
+# CSIC Reporting Service Docker Compose Configuration
+# This configuration provides a complete local development environment
+# with PostgreSQL, Redis, Kafka, and all necessary infrastructure services.
+
+services:
+  # PostgreSQL Database for Reporting Data
+  reporting-db:
+    image: postgres:15-alpine
+    container_name: csic-reporting-db
+    hostname: reporting-db
+    environment:
+      POSTGRES_USER: csic_admin
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: csic_reporting
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - reporting_db_data:/var/lib/postgresql/data/pgdata
+      - ./internal/db/migrations:/migrations:ro
+    ports:
+      - "5433:5432"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csic_admin -d csic_reporting"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Redis Cache for Performance Optimization
+  reporting-cache:
+    image: redis:7-alpine
+    container_name: csic-reporting-cache
+    hostname: reporting-cache
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - reporting_cache_data:/data
+    ports:
+      - "6380:6379"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Apache Kafka for Event Streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-kafka
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+  # Apache Zookeeper for Kafka Coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-zookeeper
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+  # Reporting Service Application
+  reporting-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-reporting-service
+    hostname: reporting-service
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+      reporting-cache:
+        condition: service_healthy
+    environment:
+      # Database Configuration
+      DB_HOST: reporting-db
+      DB_PORT: 5432
+      DB_USER: csic_admin
+      DB_PASSWORD: secure_password
+      DB_NAME: csic_reporting
+      DB_SSLMODE: require
+      # Cache Configuration
+      REDIS_HOST: reporting-cache
+      REDIS_PORT: 6379
+      # Kafka Configuration
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CONSUMER_GROUP: csic-reporting-consumer
+      KAFKA_TOPIC_PREFIX: csic
+      # Application Configuration
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      APP_MODE: release
+      APP_ENV: development
+      # Logging
+      LOG_LEVEL: debug
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - reporting_logs:/home/appuser/logs
+      - reporting_reports:/home/appuser/reports
+      - ./config.yaml:/home/appuser/config.yaml:ro
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # Prometheus for Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: csic-prometheus
+    hostname: prometheus
+    depends_on:
+      - reporting-service
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-grafana
+    hostname: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - csic-network
+    restart: unless-stopped
+
+networks:
+  csic-network:
+    name: csic-network
+    driver: bridge
+
+volumes:
+  reporting_db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
+
+  reporting_cache_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/redis
+
+  kafka_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/kafka
+
+  zookeeper_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/zookeeper
+
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/prometheus
+
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/grafana
+
+  reporting_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/logs
+
+  reporting_reports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/reports

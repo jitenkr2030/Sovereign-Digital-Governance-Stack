@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-adapter
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+    version: v1
+  annotations:
+    description: "NEAM Payment Adapter service for internal communication and metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app: payment-adapter
+    version: v1
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8084
+      targetPort: 8084
+    - name: metrics
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-adapter-headless
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+    version: v1
+  annotations:
+    description: "Headless service for stateful set-like DNS discovery"
+spec:
+  clusterIP: None
+  selector:
+    app: payment-adapter
+    version: v1
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8084
+      targetPort: 8084
+    - name: metrics
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: payment-adapter-ingress
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - payment-adapter.neam.internal
+      secretName: payment-adapter-tls
+  rules:
+    - host: payment-adapter.neam.internal
+      http:
+        paths:
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-adapter
+                port:
+                  number: 8084
+          - path: /ready
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-adapter
+                port:
+                  number: 8084
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-adapter
+                port:
+                  number: 8084
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-adapter-pdb
+  namespace: neam-production
+  labels:
+    app: payment-adapter
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: payment-adapter
+      version: v1

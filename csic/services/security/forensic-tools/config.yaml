@@ -1,0 +1,86 @@
+# CSIC Platform - Forensic Tools Service Configuration
+
+# Application Settings
+app:
+  name: "csic-forensic-tools"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+
+# Server Settings
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 300     # seconds (5 minutes for large file uploads)
+  write_timeout: 300    # seconds
+  max_body_size: 524288000  # 500MB max upload size
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "change_in_production"
+  name: "csic_platform"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+# Blob Storage Configuration
+storage:
+  type: "local"  # local, s3, minio
+  local:
+    base_path: "/data/evidence"
+    max_file_size: 524288000  # 500MB
+  s3:
+    endpoint: "localhost:9000"
+    bucket: "csic-evidence"
+    access_key: ""
+    secret_key: ""
+    use_ssl: false
+    region: "us-east-1"
+
+# Kafka Configuration (for job queue and events)
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-forensic-tools"
+  topics:
+    analysis_jobs: "security.forensics.jobs"
+    analysis_results: "security.forensics.results"
+  producer:
+    acks: "all"
+    retries: 3
+
+# Analysis Tools Configuration
+analysis:
+  # Supported analysis tools
+  tools:
+    - name: "yara"
+      enabled: true
+      path: "/usr/bin/yara"
+    - name: "exiftool"
+      enabled: true
+      path: "/usr/bin/exiftool"
+    - name: "strings"
+      enabled: true
+      path: "/usr/bin/strings"
+    - name: "hash_analysis"
+      enabled: true
+      
+  # Job processing
+  max_concurrent_jobs: 5
+  job_timeout: 3600  # seconds (1 hour)
+
+# Logging Configuration
+logging:
+  level: "INFO"   # DEBUG, INFO, WARN, ERROR
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+
+# Monitoring Configuration
+monitoring:
+  metrics_enabled: true
+  health_check_interval: 30  # seconds
+  health_path: "/health"
+  metrics_path: "/metrics"

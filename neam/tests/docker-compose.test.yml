@@ -1,0 +1,549 @@
+version: '3.8'
+
+# NEAM Platform Test Infrastructure
+# Comprehensive testing environment for National Economic Activity Monitor
+
+services:
+  # ============================================================================
+  # Core Database Services
+  # ============================================================================
+
+  # PostgreSQL - Primary transactional database for all services
+  test-postgres:
+    image: postgres:15-alpine
+    container_name: neam-test-postgres
+    environment:
+      POSTGRES_USER: neam_test
+      POSTGRES_PASSWORD: test_password_secure
+      POSTGRES_DB: neam_platform_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+      - ./test/scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./test/scripts/seed-test-data.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neam_test -d neam_platform_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ClickHouse - Analytics OLAP database for economic intelligence
+  test-clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: neam-test-clickhouse
+    environment:
+      CLICKHOUSE_DB: neam_analytics_test
+      CLICKHOUSE_USER: neam_test
+      CLICKHOUSE_PASSWORD: test_password_secure
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - test-clickhouse-data:/var/lib/clickhouse
+      - ./test/scripts/init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # Redis - Caching and session management for all services
+  test-redis:
+    image: redis:7-alpine
+    container_name: neam-test-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - test-redis-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================================
+  # Message Queue and Streaming
+  # ============================================================================
+
+  # Kafka - Event streaming for sensing layer and service communication
+  test-kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: neam-test-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: test-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://test-kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 24
+    ports:
+      - "9092:9092"
+    volumes:
+      - test-kafka-data:/var/lib/kafka
+    networks:
+      - test-network
+    depends_on:
+      test-zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "test-kafka:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Zookeeper - Required for Kafka
+  test-zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: neam-test-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - test-zookeeper-data:/var/lib/zookeeper
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "zkCli.sh", "get", "/"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Schema Registry - For Avro/Protobuf schema management
+  test-schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    container_name: neam-test-schema-registry
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: test-kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    ports:
+      - "8081:8081"
+    networks:
+      - test-network
+    depends_on:
+      test-kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================================
+  # Search and Observability
+  # ============================================================================
+
+  # OpenSearch - Log aggregation and SIEM capabilities
+  test-opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: neam-test-opensearch
+    environment:
+      - cluster.name=neam-test-cluster
+      - node.name=node-1
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=test_password_opensearch
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - test-opensearch-data:/var/lib/opensearch
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # OpenSearch Dashboards - Visualization for logs and metrics
+  test-opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.1
+    container_name: neam-test-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=http://test-opensearch:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    networks:
+      - test-network
+    depends_on:
+      test-opensearch:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================================
+  # Testing Utilities
+  # ============================================================================
+
+  # Mock Server - For external API mocking in integration tests
+  test-mockserver:
+    image: mockserver/mockserver:latest
+    container_name: neam-test-mockserver
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_LOG_LEVEL: INFO
+      MOCKSERVER_PERSIST_EXPECTATIONS: "true"
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/mockserver-initialization.json
+    volumes:
+      - ./test/config/mockserver-initialization.json:/config/mockserver-initialization.json:ro
+      - test-mockserver-data:/var/lib/mockserver
+    networks:
+      - test-network
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Test Data Generator - Generates synthetic economic data for testing
+  test-data-generator:
+    build:
+      context: ./test/data-generator
+      dockerfile: Dockerfile
+    container_name: neam-test-data-generator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: test-kafka:9092
+      SCHEMA_REGISTRY_URL: http://test-schema-registry:8081
+      POSTGRES_URL: jdbc:postgresql://test-postgres:5432/neam_platform_test
+      GENERATION_INTERVAL_MS: 1000
+      BATCH_SIZE: 100
+    networks:
+      - test-network
+    depends_on:
+      test-kafka:
+        condition: service_healthy
+      test-schema-registry:
+        condition: service_healthy
+      test-postgres:
+        condition: service_healthy
+    profiles:
+      - data-generation
+
+  # ============================================================================
+  # Unit and Integration Test Runner
+  # ============================================================================
+
+  # Go Test Runner - For Go unit and integration tests
+  test-go-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-go
+    container_name: neam-test-go-runner
+    environment:
+      - DATABASE_URL=postgresql://neam_test:test_password_secure@test-postgres:5432/neam_platform_test
+      - REDIS_URL=redis://test-redis:6379
+      - KAFKA_BROKERS=test-kafka:9092
+      - CLICKHOUSE_URL=clickhouse://neam_test:test_password_secure@test-clickhouse:9000/neam_analytics_test
+      - OPENSEARCH_URL=http://test-opensearch:9200
+      - MOCKSERVER_URL=http://test-mockserver:1080
+      - GO111MODULE=on
+      - GOCOVERDIR=/coverage
+    volumes:
+      - ./:/app:ro
+      - test-go-coverage:/coverage
+      - test-go-test-results:/test-results
+    working_dir: /app
+    command: >
+      sh -c "
+        go test -v -coverprofile=/coverage/coverage.out -json=/test-results/go-test-results.json ./... 2>&1 | tee /test-results/go-test-output.log
+        exit $${PIPESTATUS[0]}
+      "
+    networks:
+      - test-network
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+      test-kafka:
+        condition: service_healthy
+      test-clickhouse:
+        condition: service_healthy
+      test-mockserver:
+        condition: service_healthy
+
+  # Python Test Runner - For Python (simulation, analytics) unit tests
+  test-python-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-python
+    container_name: neam-test-python-runner
+    environment:
+      - DATABASE_URL=postgresql://neam_test:test_password_secure@test-postgres:5432/neam_platform_test
+      - REDIS_URL=redis://test-redis:6379
+      - KAFKA_BROKERS=test-kafka:9092
+      - CLICKHOUSE_URL=clickhouse://neam_test:test_password_secure@test-clickhouse:9000/neam_analytics_test
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./:/app:ro
+      - test-python-coverage:/coverage
+      - test-python-test-results:/test-results
+    working_dir: /app
+    command: >
+      sh -c "
+        python -m pytest -v --cov=. --cov-report=term-missing --cov-report=json:/coverage/coverage.json --junitxml=/test-results/pytest-results.xml -o junit_family=xunit2 2>&1 | tee /test-results/python-test-output.log
+      "
+    networks:
+      - test-network
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+      test-kafka:
+        condition: service_healthy
+      test-clickhouse:
+        condition: service_healthy
+
+  # ============================================================================
+  # Performance and Load Testing
+  # ============================================================================
+
+  # k6 Load Test Runner - For performance and load testing
+  test-k6-runner:
+    image: grafana/k6:latest
+    container_name: neam-test-k6-runner
+    environment:
+      - K6_OUT=hijack=http://test-k6-results:8086/write
+      - K6_PROMETHEUS_RW_SERVER_URL=http://test-k6-results:8086/write
+    volumes:
+      - ./test/performance:/scripts:ro
+      - test-k6-results:/results
+    command: >
+      run /scripts/*.js
+        --duration 60s
+        --vus 10
+        --log-format=json
+    networks:
+      - test-network
+    depends_on:
+      test-k6-results:
+        condition: service_healthy
+    profiles:
+      - load-testing
+
+  # InfluxDB - For k6 results storage
+  test-k6-results:
+    image: influxdb:2.7
+    container_name: neam-test-k6-results
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpassword123
+      - DOCKER_INFLUXDB_INIT_ORG=test-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=k6-results
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=super-secret-test-token
+    ports:
+      - "8086:8086"
+    volumes:
+      - test-influxdb-data:/var/lib/influxdb2
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - load-testing
+
+  # ============================================================================
+  # Test Reports and Aggregation
+  # ============================================================================
+
+  # Test Report Aggregator - Aggregates test results from all sources
+  test-report-aggregator:
+    build:
+      context: ./test/aggregator
+      dockerfile: Dockerfile
+    container_name: neam-test-report-aggregator
+    environment:
+      - GO_OUTPUT_DIR=/results
+      - PYTHON_COVERAGE_DIR=/coverage/python
+      - K6_RESULTS_DIR=/results/k6
+    volumes:
+      - test-go-test-results:/test-results/go:ro
+      - test-python-test-results:/test-results/python:ro
+      - test-k6-results:/results/k6:ro
+      - test-reports:/results/reports
+    working_dir: /results
+    command: >
+      sh -c "
+        echo 'Aggregating test results...' &&
+        cp -r /test-results/go/* /results/reports/ 2>/dev/null || true &&
+        cp -r /test-results/python/* /results/reports/ 2>/dev/null || true &&
+        cp -r /results/k6/* /results/reports/ 2>/dev/null || true &&
+        echo 'Test aggregation complete'
+      "
+    networks:
+      - test-network
+    depends_on:
+      test-go-runner:
+        condition: service_completed_successfully
+    profiles:
+      - reporting
+
+  # ============================================================================
+  # Code Quality and Security Testing
+  # ============================================================================
+
+  # SonarQube - Static analysis and code quality
+  test-sonarqube:
+    image: sonarqube:10.2-community
+    container_name: neam-test-sonarqube
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+      - SONAR_JDBC_URL=postgresql://neam_test:test_password_secure@test-postgres:5432/sonarqube
+      - SONAR_JDBC_USERNAME=neam_test
+      - SONAR_JDBC_PASSWORD=test_password_secure
+    ports:
+      - "9000:9000"
+    volumes:
+      - test-sonarqube-data:/opt/sonarqube/data
+      - test-sonarqube-extensions:/opt/sonarqube/extensions
+      - test-sonarqube-logs:/opt/sonarqube/logs
+    networks:
+      - test-network
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-s", "http://localhost:9000/api/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+    profiles:
+      - code-quality
+
+  # ============================================================================
+  # Network Configuration
+  # ============================================================================
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+# ============================================================================
+# Volume Configuration
+# ============================================================================
+
+volumes:
+  test-postgres-data:
+    driver: local
+  test-clickhouse-data:
+    driver: local
+  test-redis-data:
+    driver: local
+  test-kafka-data:
+    driver: local
+  test-zookeeper-data:
+    driver: local
+  test-opensearch-data:
+    driver: local
+  test-mockserver-data:
+    driver: local
+  test-influxdb-data:
+    driver: local
+  test-sonarqube-data:
+    driver: local
+  test-sonarqube-extensions:
+    driver: local
+  test-sonarqube-logs:
+    driver: local
+  test-go-coverage:
+    driver: local
+  test-python-coverage:
+    driver: local
+  test-go-test-results:
+    driver: local
+  test-python-test-results:
+    driver: local
+  test-k6-results:
+    driver: local
+  test-reports:
+    driver: local
+
+# ============================================================================
+# Shared Configuration
+# ============================================================================
+
+x-test-common: &test-common
+  RESTART: unless-stopped
+  NETWORKS:
+    - test-network
+
+x-test-environment: &test-environment
+  LOG_LEVEL: debug
+  TEST_MODE: "true"
+  TRACE_ENABLED: "true"
+
+x-test-dependencies: &test-dependencies
+  depends_on:
+    test-postgres:
+      condition: service_healthy
+    test-redis:
+      condition: service_healthy
+    test-kafka:
+      condition: service_healthy
+    test-zookeeper:
+      condition: service_healthy

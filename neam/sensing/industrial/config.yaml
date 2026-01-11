@@ -1,0 +1,131 @@
+# NEAM Industrial Adapter Configuration
+# OPC UA client for industrial automation data ingestion
+
+service:
+  name: "industrial-adapter"
+  host: "0.0.0.0"
+  port: 8087
+  environment: "production"
+  shutdown_timeout: 30s
+
+# OPC UA Protocol Configuration
+opcua:
+  enabled: true
+  sources:
+    # Primary PLC - Siemens S7
+    - endpoint_url: "opc.tcp://plc01.local:4840"
+      application_uri: "urn:neam:industrial:adapter"
+      product_uri: "urn:neam:industrial:adapter"
+      application_name: "NEAM Industrial Adapter"
+      # Security configuration for production
+      security_policy: "Basic256Sha256"
+      security_mode: "SignAndEncrypt"
+      auth_mode: "UserName"
+      username: "adapter_user"
+      password: "${OPCUA_PASSWORD}"
+      certificate_path: "/etc/neam/certs/client.pem"
+      private_key_path: "/etc/neam/certs/client-key.pem"
+      # Nodes to monitor
+      nodes_of_interest:
+        # Temperature measurements
+        - "ns=2;s=Channel1.Device1.Temperature"
+        - "ns=2;s=Channel1.Device2.Temperature"
+        # Pressure measurements
+        - "ns=2;s=Channel1.Device1.Pressure"
+        - "ns=2;s=Channel1.Device2.Pressure"
+        # Flow measurements
+        - "ns=2;s=Channel1.Device1.Flow"
+        # Speed/velocity
+        - "ns=2;s=Channel1.Device1.Speed"
+        # Position
+        - "ns=2;s=Channel1.Device1.Position"
+    # Secondary PLC - Allen-Bradley
+    - endpoint_url: "opc.tcp://plc02.local:4840"
+      application_uri: "urn:neam:industrial:adapter2"
+      security_policy: "None"
+      security_mode: "None"
+      auth_mode: "Anonymous"
+      nodes_of_interest:
+        - "ns=2;s=Channel1.Temperature"
+        - "ns=2;s=Channel1.Pressure"
+  # Subscription settings
+  subscription_rate: 100ms  # Data collection rate
+  timeout: 30s
+  retry_interval: 5s
+  reconnect_wait: 1s
+  keep_alive: 10s
+
+# Asset Discovery Configuration
+discovery:
+  enabled: true
+  discovery_interval: 300s  # 5 minutes between discoveries
+  browse_depth: 3           # Maximum recursion depth
+  # Node types to discover
+  filter_by_type:
+    - BaseAnalogType        # Analog sensors
+    - BaseDataVariable      # Data variables
+    - BaseDataType          # Data types
+  include_children: true    # Include child nodes
+  cache_timeout: 600s       # Cache discovery results for 10 minutes
+
+# Kafka Output Configuration
+kafka:
+  brokers: "kafka-cluster:9092"
+  output_topic: "industrial.telemetry"
+  dlq_topic: "industrial.dlq"
+  version: "2.8.0"
+  max_open_requests: 100
+  dial_timeout: 10s
+  write_timeout: 30s
+
+# Session Management
+session:
+  max_retries: 10
+  initial_delay: 1s
+  max_delay: 60s
+  multiplier: 2.0
+  health_check_interval: 30s
+  reconnect_wait: 5s
+  state_store_type: "redis"
+  state_store_url: "redis://redis:6379"
+
+# Signal Processing Configuration
+filtering:
+  # Deadband filter for sensor noise reduction
+  deadband_percent: 0.1  # 0.1% minimum change
+  
+  # Spike detection for sudden changes
+  spike_threshold: 20.0   # 20% deviation
+  spike_window_size: 5    # 5 samples for baseline
+  
+  # Rate of change for process stability
+  rate_of_change_limit: 10.0  # Maximum % per second
+  
+  # Quality filter
+  quality_filter:
+    - "Good"
+    - "Questionable"
+  
+  # Minimum reporting interval
+  min_reporting_interval: 100ms
+  
+  # Value range validation
+  max_value: 1e9
+  min_value: -1e9
+  
+  # Outlier detection
+  outlier_threshold: 3.0  # 3 sigma
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output_path: "/var/log/neam"
+  json_format: true
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  port: 9093
+  path: "/metrics"
+  health_path: "/health"

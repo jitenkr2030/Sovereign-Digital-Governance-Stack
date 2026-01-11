@@ -1,0 +1,276 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-htpasswd
+  namespace: registry
+  labels:
+    app: local-registry
+type: Opaque
+data:
+  # htpasswd file content (base64 encoded)
+  # Generate with: htpasswd -Bbn admin 'secure-password' | base64
+  # Default user: admin
+  htpasswd: YWRtaW46JDJ5JDA1JFNQNlZmMmR3Ni5IaXZhV2VMUVkvT0drL0c1RjV6Lk1LTC4K
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-admin-credentials
+  namespace: registry
+  labels:
+    app: local-registry
+type: Opaque
+stringData:
+  username: admin
+  password: "ChangeMeInProduction!"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-auth-config
+  namespace: registry
+  labels:
+    app: local-registry
+data:
+  config.yml: |
+    version: 0.1
+    log:
+      level: info
+      formatter: json
+    http:
+      addr: :5000
+      headers:
+        X-Content-Type-Options: [nosniff]
+    auth:
+      htpasswd:
+        realm: "Docker Registry"
+        path: /etc/docker/registry/htpasswd
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/registry
+      delete:
+        enabled: true
+      maintenance:
+        uploadpurging:
+          enabled: true
+          age: 168h
+          interval: 24h
+          dryrun: false
+    health:
+      storagedriver:
+        enabled: true
+        threshold: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-registry-auth
+  namespace: registry
+  labels:
+    app: local-registry-auth
+    tier: infrastructure
+  annotations:
+    description: "Local OCI registry with authentication"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: local-registry-auth
+  template:
+    metadata:
+      labels:
+        app: local-registry-auth
+        tier: infrastructure
+    spec:
+      serviceAccountName: local-registry
+      terminationGracePeriodSeconds: 30
+      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      
+      containers:
+        - name: registry
+          image: docker.io/library/registry:2.8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: registry
+          env:
+            - name: REGISTRY_AUTH
+              value: "htpasswd"
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Docker Registry"
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: "/etc/docker/registry/htpasswd"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: "/var/lib/registry"
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+            - name: registry-auth
+              mountPath: /etc/docker/registry
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: registry-pvc-auth
+        - name: registry-auth
+          configMap:
+            name: registry-auth-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-pvc-auth
+  namespace: registry
+  labels:
+    app: local-registry-auth
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-regional
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: registry-reader
+  labels:
+    app: local-registry
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: registry-reader-binding
+  labels:
+    app: local-registry
+subjects:
+  - kind: ServiceAccount
+    name: local-registry
+    namespace: registry
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: registry-reader
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: registry-auth-network-policy
+  namespace: registry
+  labels:
+    app: local-registry-auth
+spec:
+  podSelector:
+    matchLabels:
+      app: local-registry-auth
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: neam-components
+      ports:
+        - protocol: TCP
+          port: 5000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: local-registry-auth
+  namespace: registry
+  labels:
+    app: local-registry-auth
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: local-registry-auth
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: registry-user-management
+  namespace: registry
+  labels:
+    app: local-registry
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: local-registry
+          containers:
+            - name: user-management
+              image: docker.io/library/alpine:3.19
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # Rotate registry credentials periodically
+                  # This is a placeholder for more sophisticated user management
+                  echo "Registry user management job executed at $(date)"
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+          restartPolicy: OnFailure

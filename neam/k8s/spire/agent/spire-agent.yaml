@@ -1,0 +1,369 @@
+# SPIRE Agent DaemonSet - Workload Attestation on All Nodes
+# Namespace Configuration
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-agent
+  labels:
+    neam-platform/security: "enabled"
+---
+# SPIRE Agent Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: spire-agent
+  labels:
+    neam-platform/security: "enabled"
+---
+# SPIRE Agent ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent
+  namespace: spire-agent
+  labels:
+    neam-platform/security: "enabled"
+data:
+  spire-agent.conf: |
+    agent {
+      data_dir = "/run/spire/data"
+      log_level = "DEBUG"
+      trust_domain = "neam-platform.gov"
+      server_address = "spire-server.spire-system.svc"
+      server_port = "8081"
+      socket_path = "/run/spire/agent/public/api.sock"
+      trust_bundle_path = "/run/spire/secrets/tls/ca.crt"
+      advertised_address = "0.0.0.0"
+      allow_unauthenticated_verifiers = false
+      workload_svid_pretty_name = true
+    }
+
+    plugins {
+      # Node Attestation using Kubernetes Projected Service Account Token
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "neam-platform"
+        }
+      }
+
+      # Workload Attestation - Kubernetes
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          enabled = true
+          max_workers = 50
+          kubelet_read_timeout = "5s"
+          kubelet_connection_timeout = "1s"
+          stream_response_timeout = "30s"
+          cache_timeout = "1m"
+          deny_on_error = true
+        }
+      }
+
+      # Workload Attestation - Unix Socket
+      WorkloadAttestor "unix" {
+        plugin_data {
+          enabled = true
+        }
+      }
+
+      # Key Manager - Disk-based for agent keys
+      KeyManager "disk" {
+        plugin_data {
+          directory = "/run/spire/data"
+        }
+      }
+
+      # Secret Manager - Disk-based for workload secrets
+      SecretManager "disk" {
+        plugin_data {
+          directory = "/run/spire/secrets"
+        }
+      }
+    }
+
+    health_checks {
+      bind_address = "0.0.0.0"
+      bind_port = "4030"
+    }
+---
+# SPIRE Agent DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire-agent
+  labels:
+    app: spire-agent
+    neam-platform/security: "enabled"
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+        neam-platform/security: "enabled"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4030"
+    spec:
+      serviceAccountName: spire-agent
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: spire-agent
+          image: gcr.io/spiffe-io/spire-agent:1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /run/spire/secrets/spire-agent.conf
+          ports:
+            - containerPort: 4030
+              name: Health
+              hostPort: 4030
+            - containerPort: 8082
+              name: WorkloadAPI
+              hostPort: 8082
+          volumeMounts:
+            - name: agent-config
+              mountPath: /run/spire/secrets
+              readOnly: true
+            - name: spire-data
+              mountPath: /run/spire/data
+            - name: k8s-certs
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            - name: kubelet-socket
+              mountPath: /var/lib/kubelet
+              readOnly: true
+          env:
+            - name: SPIRE_SERVER_ADDRESS
+              value: "spire-server.spire-system.svc"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 4030
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4030
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN  # Required for some attestation methods
+            privileged: false
+      volumes:
+        - name: agent-config
+          configMap:
+            name: spire-agent
+        - name: spire-data
+          emptyDir: {}
+        - name: k8s-certs
+          secret:
+            secretName: spire-agent-token
+            optional: true
+        - name: kubelet-socket
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoSchedule"
+          tolerationSeconds: 30
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoSchedule"
+          tolerationSeconds: 30
+---
+# SPIRE Agent RBAC Configuration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-agent-cluster-role
+  namespace: spire-agent
+rules:
+  # Node attestation permissions
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  
+  # Workload attestation permissions
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  
+  # Pod security admission
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  
+  # Kubelet access
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-agent-cluster-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire-agent
+roleRef:
+  kind: ClusterRole
+  name: spire-agent-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# SPIRE Agent Token Secret (Projected for security)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spire-agent-token
+  namespace: spire-agent
+  annotations:
+    kubernetes.io/service-account.name: spire-agent
+type: kubernetes.io/service-account-token
+---
+# SPIRE Agent Role for Namespace Access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-agent-role
+  namespace: neam-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-agent-rolebinding
+  namespace: neam-platform
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire-agent
+roleRef:
+  kind: Role
+  name: spire-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# SPIRE Agent Role for all neam-platform namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-workload-attestor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-workload-attestor-binding
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire-agent
+roleRef:
+  kind: ClusterRole
+  name: spire-workload-attestor
+  apiGroup: rbac.authorization.k8s.io
+---
+# SPIRE Workload API Service (NodePort for workload access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-agent
+  namespace: spire-agent
+  labels:
+    app: spire-agent
+spec:
+  type: NodePort
+  ports:
+    - name: workload-api
+      port: 8082
+      targetPort: 8082
+      nodePort: 30082
+  selector:
+    app: spire-agent
+---
+# SPIRE Agent Deployment Strategy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-deployment-hints
+  namespace: spire-agent
+data:
+  deployment-notes.txt: |
+    # SPIRE Agent Deployment Notes
+    
+    ## Node Requirements
+    - All worker nodes must have the SPIRE agent DaemonSet deployed
+    - Nodes must be in Ready state
+    - kubelet must be accessible from the agent
+    
+    ## TLS Configuration
+    - Agents automatically receive certificates from SPIRE server
+    - Trust bundle is distributed via ConfigMap
+    
+    ## Troubleshooting
+    - Check agent logs: kubectl logs -n spire-agent -l app=spire-agent
+    - Verify node attestation: kubectl exec -n spire-agent <agent-pod> -- spire-agent node show
+    - Check workload attestation: kubectl exec -n spire-agent <agent-pod> -- spire-agent workload show
+    
+    ## Scaling Considerations
+    - Each agent can handle ~50 concurrent workloads
+    - For high-density clusters, consider horizontal agent scaling

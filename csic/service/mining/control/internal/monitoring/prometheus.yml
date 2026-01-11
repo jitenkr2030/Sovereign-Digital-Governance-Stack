@@ -1,0 +1,108 @@
+# Prometheus Configuration for Mining Control Microservice
+# This file configures Prometheus to scrape metrics from the Mining Control
+# application and other related services.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mining-control'
+    env: '${ENV:-development}'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+      timeout: 10s
+      api_version: v2
+
+# Load rules for alerting and recording
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Self-monitoring of Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # Mining Control Application Metrics
+  # Scrapes HTTP server metrics, business metrics, and Go runtime metrics
+  - job_name: 'mining-control'
+    static_configs:
+      - targets: ['mining-control:9090']
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 10s
+    scheme: http
+    relabel_configs:
+      # Add environment label from container environment
+      - source_labels: [__meta_docker_container_label_env_app_env]
+        target_label: env
+        regex: (.+)
+        replacement: ${1}
+      # Add service label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+        regex: (.+)
+        replacement: ${1}
+
+  # PostgreSQL with TimescaleDB Metrics
+  # Requires postgres_exporter to be running
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+        regex: (.+)
+        replacement: ${1}
+
+  # Redis Metrics
+  # Requires redis_exporter to be running
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+        regex: (.+)
+        replacement: ${1}
+
+  # Kafka Metrics
+  # Requires kafka_exporter to be running
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: http
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+        regex: (.+)
+        replacement: ${1}
+
+# Remote write configuration for long-term storage (optional)
+# Uncomment and configure for remote storage solutions
+# remote_write:
+#   - url: "https://prometheus-remote-write.example.com/api/v1/write"
+#     basic_auth:
+#       username: ${REMOTE_WRITE_USER}
+#       password_file: /etc/prometheus/remote_write_password
+#     tls_config:
+#       insecure_skip_verify: false
+#     queue_config:
+#       max_samples_per_send: 10000
+#       batch_send_deadline: 30s
+#       capacity: 20000
+#       max_shards: 30

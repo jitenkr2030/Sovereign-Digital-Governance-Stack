@@ -1,0 +1,221 @@
+.alert-notification {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  min-width: 320px;
+  max-width: 420px;
+}
+
+/* Type Variations */
+.alert-success {
+  border-left: 4px solid var(--color-success);
+}
+
+.alert-success .alert-icon {
+  color: var(--color-success);
+}
+
+.alert-success .alert-icon-container {
+  background: var(--color-success-bg);
+}
+
+.alert-error {
+  border-left: 4px solid var(--color-danger);
+}
+
+.alert-error .alert-icon {
+  color: var(--color-danger);
+}
+
+.alert-error .alert-icon-container {
+  background: var(--color-danger-bg);
+}
+
+.alert-warning {
+  border-left: 4px solid var(--color-warning);
+}
+
+.alert-warning .alert-icon {
+  color: var(--color-warning);
+}
+
+.alert-warning .alert-icon-container {
+  background: var(--color-warning-bg);
+}
+
+.alert-info {
+  border-left: 4px solid var(--color-info);
+}
+
+.alert-info .alert-icon {
+  color: var(--color-info);
+}
+
+.alert-info .alert-icon-container {
+  background: var(--color-info-bg);
+}
+
+/* Icon Container */
+.alert-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.alert-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Content */
+.alert-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-title {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.alert-message {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+/* Action Button */
+.alert-action {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+}
+
+.alert-action:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+/* Dismiss Button */
+.alert-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+  flex-shrink: 0;
+}
+
+.alert-dismiss:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+/* Container */
+.alert-container {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  z-index: var(--z-toast);
+  pointer-events: none;
+}
+
+.alert-container > * {
+  pointer-events: auto;
+}
+
+.alert-wrapper {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Positions */
+.alert-position-top-right {
+  top: 0;
+  right: 0;
+}
+
+.alert-position-top-left {
+  top: 0;
+  left: 0;
+}
+
+.alert-position-bottom-right {
+  bottom: 0;
+  right: 0;
+}
+
+.alert-position-bottom-left {
+  bottom: 0;
+  left: 0;
+}
+
+.alert-position-top-center {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.alert-position-bottom-center {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Animations */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .alert-notification {
+    min-width: auto;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .alert-container {
+    left: var(--spacing-sm);
+    right: var(--spacing-sm);
+    padding: var(--spacing-sm);
+  }
+
+  .alert-position-top-center,
+  .alert-position-bottom-center {
+    left: var(--spacing-sm);
+    right: var(--spacing-sm);
+    transform: none;
+  }
+}

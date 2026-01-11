@@ -1,0 +1,60 @@
+# NEAM Platform Grafana Datasource Configuration
+# Dashboard data source connections
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: GET
+      timeout: 30s
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.48.0
+    secureJsonData:
+      httpHeaderValue1: ""
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: neam_db
+    user: neam_user
+    jsonData:
+      sslmode: disable
+      database: neam_db
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false
+    secureJsonData:
+      password: neam_password
+
+  - name: ClickHouse
+    type: clickhouse
+    access: proxy
+    url: http://clickhouse:8123
+    database: neam_analytics
+    user: neam_user
+    jsonData:
+      port: 8123
+      defaultDatabase: neam_analytics
+      secure: false
+      tlsSkipVerify: true
+    secureJsonData:
+      password: neam_password
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      timeout: 30s
+    editable: false

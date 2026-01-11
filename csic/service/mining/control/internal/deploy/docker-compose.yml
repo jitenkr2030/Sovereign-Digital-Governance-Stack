@@ -1,0 +1,231 @@
+version: '3.8'
+
+# Docker Compose configuration for Mining Control Microservice
+# This file defines all services required to run the Mining Control module,
+# including PostgreSQL with TimescaleDB, Redis for caching, and the application itself.
+
+services:
+  # PostgreSQL database with TimescaleDB extension
+  # Stores all mining operations data, energy consumption logs, and compliance records
+  mining-db:
+    image: timescale/timescaledb:2.13.1-pg16
+    container_name: mining-control-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-mining_control}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mining_control_secret}
+      POSTGRES_DB: ${DB_NAME:-mining_control}
+    volumes:
+      - mining_db_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/migrations
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mining_control} -d ${DB_NAME:-mining_control}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mining_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # Redis cache for performance optimization
+  # Caches frequently accessed data like pool status and recent alerts
+  mining-cache:
+    image: redis:7-alpine
+    container_name: mining-control-cache
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - mining_cache_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mining_network
+    restart: unless-stopped
+
+  # Mining Control Application
+  # The main microservice for managing mining operations and compliance
+  mining-control:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mining-control-app
+    environment:
+      # Application Configuration
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: ${APP_PORT:-8080}
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      
+      # Database Configuration
+      DB_HOST: mining-db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-mining_control}
+      DB_PASSWORD: ${DB_PASSWORD:-mining_control_secret}
+      DB_NAME: ${DB_NAME:-mining_control}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-25}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-5m}
+      
+      # Redis Configuration
+      REDIS_HOST: mining-cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      
+      # Kafka Configuration (optional, for event streaming)
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-mining-control-group}
+      
+      # Monitoring Configuration
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_PORT: ${METRICS_PORT:-9090}
+      
+      # Alert Configuration
+      ALERT_CHECK_INTERVAL: ${ALERT_CHECK_INTERVAL:-30s}
+      ENERGY_THRESHOLD_WARNING: ${ENERGY_THRESHOLD_WARNING:-80}
+      ENERGY_THRESHOLD_CRITICAL: ${ENERGY_THRESHOLD_CRITICAL:-95}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./logs:/app/logs
+    ports:
+      - "${APP_PORT:-8080}:8080"
+      - "${METRICS_PORT:-9090}:9090"
+    depends_on:
+      mining-db:
+        condition: service_healthy
+      mining-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mining_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: mining-control-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - mining_network
+    restart: unless-stopped
+
+  # Grafana for visualization and dashboards
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: mining-control-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-mining_control}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - mining_network
+    restart: unless-stopped
+
+  # Kafka for event streaming (optional)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: mining-control-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - mining_network
+    restart: unless-stopped
+
+  # Zookeeper for Kafka coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: mining-control-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - mining_network
+    restart: unless-stopped
+
+volumes:
+  # Persistent volume for database data
+  mining_db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/postgres
+  
+  # Persistent volume for Redis cache data
+  mining_cache_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/redis
+  
+  # Persistent volume for Prometheus data
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/prometheus
+  
+  # Persistent volume for Grafana data
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-./data}/grafana
+
+networks:
+  # Dedicated network for mining control services
+  mining_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

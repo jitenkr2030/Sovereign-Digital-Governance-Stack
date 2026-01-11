@@ -1,0 +1,115 @@
+# Regulatory Reporting Service Configuration
+
+app:
+  host: "0.0.0.0"
+  port: 8080
+  environment: "production"
+  read_timeout: 30
+  write_timeout: 30
+  shutdown_timeout: 10
+
+logging:
+  level: "info"
+  output: "stdout"
+
+auth:
+  enabled: true
+  jwt_secret: "your-jwt-secret-key"
+  issuer: "reporting-service"
+  audience: "compliance-team"
+
+# Database configuration (for production use)
+database:
+  host: "localhost"
+  port: 5432
+  database: "reporting"
+  username: "reporting_user"
+  password: "reporting_password"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Regulatory filing settings
+filing:
+  sar:
+    filing_agency: "FinCEN"
+    filing_methods:
+      - "secure_portal"
+      - "electronic"
+      - "mail"
+    retention_years: 5
+  ctr:
+    filing_agency: "FinCEN"
+    threshold_amount: 10000.00
+    filing_methods:
+      - "secure_portal"
+      - "electronic"
+    retention_years: 5
+
+# Compliance rule defaults
+compliance:
+  aml:
+    high_risk_threshold: 7
+    medium_risk_threshold: 4
+  sanctions:
+    screening_lists:
+      - "OFAC"
+      - "EU_Sanctions"
+      - "UN_Sanctions"
+    auto_block: true
+
+# Alert settings
+alerts:
+  auto_generate: true
+  escalation_rules:
+    - severity: "critical"
+      assign_to: "senior_compliance_officer"
+      response_time_hours: 2
+    - severity: "high"
+      assign_to: "compliance_officer"
+      response_time_hours: 8
+    - severity: "medium"
+      assign_to: "analyst"
+      response_time_hours: 24
+
+# Report generation settings
+reports:
+  sar:
+    template: "fincen_sar_template"
+    required_fields:
+      - "subject_id"
+      - "subject_name"
+      - "suspicious_activity"
+      - "dollar_amount"
+  ctr:
+    template: "fincen_ctr_template"
+    required_fields:
+      - "person_name"
+      - "person_id_number"
+      - "total_amount"
+  internal:
+    template: "internal_compliance_template"
+    sections:
+      - "executive_summary"
+      - "transaction_analysis"
+      - "risk_assessment"
+      - "recommendations"
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  path: "/metrics"
+
+# Health check settings
+health:
+  check_interval: 30
+  dependency_timeout: 5
+
+# Audit logging
+audit:
+  enabled: true
+  retention_days: 365
+  sensitive_fields_masked:
+    - "ssn"
+    - "account_number"
+    - "api_key"

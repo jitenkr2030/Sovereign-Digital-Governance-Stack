@@ -1,0 +1,233 @@
+.real-time-feed {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 500px;
+}
+
+/* Header */
+.feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.feed-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.feed-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+/* Connection Status */
+.feed-connection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: 12px;
+}
+
+.feed-connected {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.feed-disconnected {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* Controls */
+.feed-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.feed-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+/* Error */
+.feed-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-danger-bg);
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  flex-shrink: 0;
+}
+
+/* List */
+.feed-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+}
+
+.feed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.feed-empty p {
+  margin-top: var(--spacing-sm);
+}
+
+/* Item */
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feed-item:hover {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-primary);
+}
+
+.feed-item-new {
+  border-left: 3px solid var(--color-primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.feed-item-priority {
+  border-left: 3px solid var(--color-danger);
+}
+
+/* Icon */
+.feed-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.feed-icon-alert {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Content */
+.feed-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-xs);
+}
+
+.feed-item-source {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.feed-item-time {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+/* Data Display */
+.feed-item-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.feed-data-pair {
+  font-size: var(--font-size-xs);
+}
+
+.feed-data-key {
+  color: var(--color-text-secondary);
+}
+
+.feed-data-value {
+  font-family: var(--font-mono);
+  color: var(--color-primary);
+  margin-left: var(--spacing-xs);
+}
+
+/* Footer */
+.feed-footer {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.feed-stats {
+  display: flex;
+  gap: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.feed-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .feed-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .feed-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .feed-item-data {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+}

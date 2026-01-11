@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Cache directories
+.npm-cache/
+.nyc_output/
+coverage/
+*.lcov
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.test
+*.out
+
+# Go coverage outputs
+coverage.out
+
+# Misc
+*.pem
+*.key

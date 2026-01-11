@@ -1,0 +1,215 @@
+.intervention-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Summary */
+.intervention-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+}
+
+.intervention-summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.intervention-summary-value {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.intervention-summary-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* List */
+.intervention-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Card */
+.intervention-card {
+  padding: var(--spacing-md);
+  transition: all var(--transition-fast) var(--ease);
+}
+
+.intervention-card:hover {
+  border-color: var(--color-primary);
+}
+
+.intervention-card-active {
+  border-left: 3px solid var(--color-success);
+}
+
+.intervention-card-paused {
+  border-left: 3px solid var(--color-warning);
+}
+
+.intervention-card-failed,
+.intervention-card-cancelled {
+  border-left: 3px solid var(--color-danger);
+}
+
+/* Header */
+.intervention-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.intervention-info {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
+.intervention-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+}
+
+.intervention-name {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.intervention-type {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+  margin: var(--spacing-xs) 0 0 0;
+}
+
+/* Description */
+.intervention-description {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+/* Progress */
+.intervention-progress {
+  margin-bottom: var(--spacing-md);
+}
+
+.intervention-progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Impact */
+.intervention-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--color-bg-tertiary);
+  border-radius: 6px;
+  margin-bottom: var(--spacing-md);
+}
+
+.intervention-metric {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-size-xs);
+}
+
+.metric-label {
+  color: var(--color-text-secondary);
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* Time */
+.intervention-time {
+  display: flex;
+  gap: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-md);
+}
+
+/* Actions */
+.intervention-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-light);
+}
+
+/* Modal */
+.modal-intervention-name {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-top: var(--spacing-sm);
+}
+
+/* Skeleton Loading */
+.intervention-status-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeleton-card {
+  height: 150px;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-elevated) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .intervention-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .intervention-actions {
+    flex-direction: column;
+  }
+
+  .intervention-actions button {
+    width: 100%;
+  }
+}

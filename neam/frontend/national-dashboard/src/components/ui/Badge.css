@@ -1,0 +1,80 @@
+.neam-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+/* Sizes */
+.neam-badge-sm {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+}
+
+.neam-badge-md {
+  padding: 4px 12px;
+  font-size: 0.875rem;
+}
+
+.neam-badge-lg {
+  padding: 6px 16px;
+  font-size: 1rem;
+}
+
+/* Variants */
+.neam-badge-default {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.neam-badge-primary {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-primary);
+}
+
+.neam-badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.neam-badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.neam-badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.neam-badge-info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+/* Dot */
+.neam-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Icon */
+.neam-badge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Clickable */
+.neam-badge-clickable {
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease);
+}
+
+.neam-badge-clickable:hover {
+  opacity: 0.8;
+}

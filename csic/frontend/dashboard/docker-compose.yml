@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-dashboard
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - csic-network
+
+  dashboard-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: csic-dashboard-dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+    restart: unless-stopped
+    networks:
+      - csic-network
+
+networks:
+  csic-network:
+    driver: bridge

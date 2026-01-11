@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  forensic-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: forensic-tools
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      - DB_HOST=10.112.2.4
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=backend_shared
+      - TABLE_PREFIX=sess_5274d1c3_
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8084
+      - LOG_LEVEL=info
+      - GOMAXPROCS=4
+      - GOMEMLIMIT=512MiB
+    volumes:
+      - ./config.yaml:/home/appuser/config.yaml:ro
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+networks:
+  csic-network:
+    external: true

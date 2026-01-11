@@ -1,0 +1,64 @@
+.progressbar-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.progressbar-track {
+  flex: 1;
+  background: var(--color-bg-tertiary);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progressbar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width var(--transition-normal) var(--ease);
+}
+
+.progressbar-animated {
+  animation: progressbar-stripes 1s linear infinite;
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+}
+
+@keyframes progressbar-stripes {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.progressbar-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Sizes */
+.progressbar-sm .progressbar-track {
+  height: 4px;
+}
+
+.progressbar-md .progressbar-track {
+  height: 8px;
+}
+
+.progressbar-lg .progressbar-track {
+  height: 12px;
+}

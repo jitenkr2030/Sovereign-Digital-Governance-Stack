@@ -1,0 +1,85 @@
+# Compliance Module Configuration
+
+# Application Configuration
+app:
+  name: "compliance-module"
+  host: "0.0.0.0"
+  port: 8081
+  environment: "development"
+  debug: true
+
+# Database Configuration (PostgreSQL - shared instance with table prefix)
+database:
+  host: "postgres"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_platform"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Redis Configuration (for caching and rate limiting)
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "s:compliance:"
+
+# Logging Configuration
+logging:
+  level: "debug"
+  format: "json"
+  output: "stdout"
+
+# Licensing Configuration
+licensing:
+  # Default license validity period in days
+  default_validity_days: 365
+  # Days before expiry to trigger renewal warning
+  renewal_warning_days: 30
+  # Days before expiry to auto-create renewal application
+  auto_renewal_days: 60
+
+# Compliance Scoring Configuration
+scoring:
+  # Base score for new entities
+  base_score: 100.0
+  # Deduction per overdue obligation
+  overdue_deduction: 10.0
+  # Deduction for suspended license
+  suspended_license_deduction: 50.0
+  # Bonus for early obligation fulfillment
+  early_fulfillment_bonus: 5.0
+  # Minimum score threshold
+  min_score: 0.0
+  # Maximum score threshold
+  max_score: 100.0
+
+# Obligation Management Configuration
+obligation:
+  # Default reminder days before due date
+  reminder_days: 7
+  # Enable automatic overdue detection
+  auto_overdue_detection: true
+  # Overdue check interval in hours
+  overdue_check_interval: 24
+
+# Audit Configuration
+audit:
+  # Enable audit logging
+  enabled: true
+  # Retention period for audit logs in days
+  retention_days: 365
+  # Include request/response details
+  include_request_details: true
+  # Include sensitive data mask
+  mask_sensitive_data: true
+
+# Health Check Configuration
+health:
+  enabled: true
+  path: "/health"
+  interval: 30

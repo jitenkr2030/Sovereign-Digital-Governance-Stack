@@ -1,0 +1,157 @@
+_format_version: "3.0"
+_transformers:
+  - name: mtls
+  - name: rate-limiting
+
+services:
+  # Integration Gateway Service
+  integration-gateway:
+    url: http://integration-gateway:8080
+    routes:
+      - name: integration-api
+        paths:
+          - /api/v1
+        strip_path: false
+        plugins:
+          - name: mtls
+            config:
+              certificate_request: "REQUIRED"
+              client_certificate:
+                - cert: "/certs/client-ca.crt"
+          - name: rate-limiting
+            config:
+              minute: 1000
+              hour: 10000
+              policy: local
+          - name: correlation-id
+            config:
+              header_name: X-Request-ID
+              generator: uuid
+
+  # Health check endpoint
+  health:
+    url: http://integration-gateway:8080/health
+    routes:
+      - name: health
+        paths:
+          - /health
+        strip_path: false
+
+  # Metrics endpoint
+  metrics:
+    url: http://integration-gateway:8080/metrics
+    routes:
+      - name: metrics
+        paths:
+          - /metrics
+        strip_path: false
+
+  # Webhook endpoints for external systems
+  webhooks:
+    url: http://integration-gateway:8080/webhook
+    routes:
+      - name: webhooks
+        paths:
+          - /webhook
+        strip_path: false
+        plugins:
+          - name: mtls
+            config:
+              certificate_request: "OPTIONAL"
+          - name: request-termination
+            config:
+              status_code: 405
+              body: "Method not allowed"
+
+  # Central Bank of Egypt endpoint
+  central-bank-webhook:
+    url: http://integration-gateway:8080/webhook/central-bank
+    routes:
+      - name: central-bank
+        paths:
+          - /webhook/central-bank
+        strip_path: false
+
+  # Ministry of Finance endpoint
+  ministry-webhook:
+    url: http://integration-gateway:8080/webhook/ministry
+    routes:
+      - name: ministry-finance
+        paths:
+          - /webhook/ministry
+        strip_path: false
+
+consumers:
+  - username: central-bank
+    custom_id: central-bank-001
+  - username: ministry-finance
+    custom_id: ministry-finance-001
+  - username: treasury-system
+    custom_id: treasury-system-001
+  - username: audit-service
+    custom_id: audit-service-001
+  - username: dashboard
+    custom_id: dashboard-001
+
+acl_plugins:
+  - name: acl
+    consumers:
+      - central-bank
+      - ministry-finance
+      - treasury-system
+      - audit-service
+      - dashboard
+
+mtls_plugins:
+  - name: mtls
+    consumer: central-bank
+    config:
+      certificate_request: "REQUIRED"
+  - name: mtls
+    consumer: ministry-finance
+    config:
+      certificate_request: "REQUIRED"
+  - name: mtls
+    consumer: treasury-system
+    config:
+      certificate_request: "REQUIRED"
+  - name: mtls
+    consumer: audit-service
+    config:
+      certificate_request: "REQUIRED"
+  - name: mtls
+    consumer: dashboard
+    config:
+      certificate_request: "REQUIRED"
+
+rate_limiting_plugins:
+  - name: rate-limiting
+    consumer: central-bank
+    config:
+      minute: 5000
+      hour: 100000
+      policy: local
+  - name: rate-limiting
+    consumer: ministry-finance
+    config:
+      minute: 3000
+      hour: 50000
+      policy: local
+  - name: rate-limiting
+    consumer: treasury-system
+    config:
+      minute: 1000
+      hour: 20000
+      policy: local
+  - name: rate-limiting
+    consumer: audit-service
+    config:
+      minute: 10000
+      hour: 200000
+      policy: local
+  - name: rate-limiting
+    consumer: dashboard
+    config:
+      minute: 500
+      hour: 10000
+      policy: local

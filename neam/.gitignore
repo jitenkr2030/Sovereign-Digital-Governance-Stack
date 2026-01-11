@@ -1,0 +1,96 @@
+# NEAM Platform - Git Ignore
+# Excludes sensitive files and build artifacts
+
+# ==================== GO ====================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Build outputs
+bin/
+build/
+dist/
+
+# Go modules
+vendor/
+go.work
+go.work.sum
+
+# ==================== TERRAFORM ====================
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+
+# Terraform backup
+*.backup
+
+# .terraform directory
+.terraform/
+terraform.tfstate.d/
+
+# ==================== DOCKER ====================
+.docker/
+
+# ==================== KUBERNETES ====================
+*.kubeconfig
+*.kubeconfig~
+
+# Kustomize build outputs
+kustomize*output.yaml
+
+# ==================== IDE ====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ==================== OS ====================
+.DS_Store
+Thumbs.db
+*.log
+
+# ==================== SECRETS ====================
+*.pem
+*.key
+*.crt
+.env
+.env.local
+.env.*.local
+secrets/
+credentials/
+
+# ==================== BACKUPS ====================
+backups/
+*.backup
+*.bak
+
+# ==================== TEST ====================
+coverage.out
+coverage.html
+*.coverprofile
+test-reports/
+htmlcov/
+
+# ==================== TEMP ====================
+tmp/
+temp/
+*.tmp
+
+# ==================== DOCUMENTATION ====================
+site/
+
+# ==================== KAFKA ====================
+kafka-logs/
+zookeeper/
+
+# ==================== MISC ====================
+*.orig
+*.rej
+*.patch

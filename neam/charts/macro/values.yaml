@@ -1,0 +1,224 @@
+# Default values for macro service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "macro"
+fullnameOverride: "neam-macro"
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: neam-platform/macro
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-macro"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-macro-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "jkl012"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-macro"
+
+envFrom:
+  - secretRef:
+      name: macro-secrets
+  - configMapRef:
+      name: macro-config
+
+command:
+  - "/macro"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/macro
+    readOnly: true
+
+volumes:
+  - name: config
+    configMap:
+      name: macro-config
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: macro.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - macro.example.com
+      secretName: macro-tls
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      analysis:
+        window_sizes:
+          - 1h
+          - 24h
+          - 7d
+          - 30d
+        min_data_points: 100
+      
+      indicators:
+        - sma
+        - ema
+        - rsi
+        - macd
+        - bollinger
+      
+      cache:
+        redis_url: redis://redis:6379
+        ttl: 30m
+
+configmapFromFile:
+  create: false
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity: {}
+
+tolerations: []
+
+terminationGracePeriodSeconds: 30
+
+priorityClassName: medium-priority
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

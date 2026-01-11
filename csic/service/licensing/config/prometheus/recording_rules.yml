@@ -1,0 +1,323 @@
+# Prometheus Recording Rules for CSIC Licensing Service
+# These rules define pre-computed frequently used queries for better performance
+# and more readable alerting rules.
+
+groups:
+  # Application Metrics Recording Rules
+  - name: licensing-service-recording-rules
+    rules:
+      # HTTP Request Rates
+      - record: licensing:http_requests:rate5m
+        expr: rate(http_requests_total{job="csic-licensing-service"}[5m])
+
+      - record: licensing:http_requests_by_status:rate5m
+        expr: rate(http_requests_total{job="csic-licensing-service"}[5m]) by (status, handler)
+
+      - record: licensing:http_requests_by_method:rate5m
+        expr: rate(http_requests_total{job="csic-licensing-service"}[5m]) by (method, handler)
+
+      # HTTP Latency Percentiles
+      - record: licensing:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="csic-licensing-service"}[5m]))
+
+      - record: licensing:http_request_duration_seconds:p99
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="csic-licensing-service"}[5m]))
+
+      - record: licensing:http_request_duration_seconds:avg
+        expr: rate(http_request_duration_seconds_sum{job="csic-licensing-service"}[5m]) / rate(http_request_duration_seconds_count{job="csic-licensing-service"}[5m])
+
+      # Error Rates
+      - record: licensing:http_errors:rate5m
+        expr: rate(http_requests_total{job="csic-licensing-service",status=~"5.."}[5m])
+
+      - record: licensing:http_errors:ratio
+        expr: licensing:http_errors:rate5m / licensing:http_requests:rate5m
+
+  # Database Metrics Recording Rules
+  - name: licensing-database-recording-rules
+    rules:
+      # Connection Utilization
+      - record: licensing:db_connections:utilization
+        expr: pg_stat_activity_count / pg_settings_max_connections
+
+      - record: licensing:db_connections:active
+        expr: pg_stat_activity_count{state="active"}
+
+      - record: licensing:db_connections:idle
+        expr: pg_stat_activity_count{state="idle"}
+
+      # Query Performance
+      - record: licensing:db_query_rate:1m
+        expr: rate(pg_stat_statements_total[1m])
+
+      - record: licensing:db_query_time:avg
+        expr: rate(pg_stat_statements_total_time[1m]) / rate(pg_stat_statements_calls[1m])
+
+      # Transaction Statistics
+      - record: licensing:db_transactions:rate1m
+        expr: rate(pg_stat_database_xact_commit[1m]) + rate(pg_stat_database_xact_rollback[1m])
+
+      - record: licensing:db_transactions:rollback_ratio
+        expr: rate(pg_stat_database_xact_rollback[1m]) / (rate(pg_stat_database_xact_commit[1m]) + rate(pg_stat_database_xact_rollback[1m]))
+
+      # Table and Index Statistics
+      - record: licensing:db_table_size
+        expr: pg_database_size_bytes / 1024 / 1024
+
+      - record: licensing:db_table_scan_rate
+        expr: rate(pg_stat_user_tables_seq_scan[1m])
+
+      - record: licensing:db_index_hit_ratio
+        expr: pg_stat_user_indexes_hit_ratio
+
+  # Cache Metrics Recording Rules
+  - name: licensing-cache-recording-rules
+    rules:
+      # Memory Utilization
+      - record: licensing:cache_memory:utilization
+        expr: redis_memory_used_bytes / redis_memory_max_bytes
+
+      - record: licensing:cache_memory:used
+        expr: redis_memory_used_bytes / 1024 / 1024
+
+      # Key Statistics
+      - record: licensing:cache_keys:total
+        expr: redis_db_keys
+
+      - record: licensing:cache_keys:expired
+        expr: redis_expired_keys_total
+
+      - record: licensing:cache_keys:evicted
+        expr: redis_keyspace_evictions_total
+
+      # Hit Rate
+      - record: licensing:cache_hit_rate
+        expr: redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+
+      - record: licensing:cache_hits:rate1m
+        expr: rate(redis_keyspace_hits_total[1m])
+
+      - record: licensing:cache_misses:rate1m
+        expr: rate(redis_keyspace_misses_total[1m])
+
+      # Command Statistics
+      - record: licensing:cache_commands:rate1m
+        expr: rate(redis_commands_total[1m])
+
+      - record: licensing:cache_slow_commands:rate1m
+        expr: rate(redis_slowlog_length[1m])
+
+  # Kafka Metrics Recording Rules
+  - name: licensing-kafka-recording-rules
+    rules:
+      # Message Throughput
+      - record: licensing:kafka_messages:in:rate1m
+        expr: rate(kafka_server_brokertopicmetrics_messagesin_total[1m])
+
+      - record: licensing:kafka_messages:out:rate1m
+        expr: rate(kafka_server_brokertopicmetrics_messagesout_total[1m])
+
+      - record: licensing:kafka_bytes:in:rate1m
+        expr: rate(kafka_server_brokertopicmetrics_bytesin_total[1m])
+
+      - record: licensing:kafka_bytes:out:rate1m
+        expr: rate(kafka_server_brokertopicmetrics_bytesout_total[1m])
+
+      # Request Latency
+      - record: licensing:kafka_request_latency:avg
+        expr: rate(kafka_network_requestmetrics_totaltimems[1m]) / rate(kafka_network_requestmetrics_totalrequests[1m])
+
+      - record: licensing:kafka_request_latency:p99
+        expr: histogram_quantile(0.99, rate(kafka_network_requestmetrics_totaltimems_bucket[1m]))
+
+      # Consumer Lag
+      - record: licensing:kafka_consumer_lag:max
+        expr: max(kafka_consumer_group_lag) by (consumer_group)
+
+      - record: licensing:kafka_consumer_lag:avg
+        expr: avg(kafka_consumer_group_lag) by (consumer_group)
+
+      # Partition Statistics
+      - record: licensing:kafka_under_replicated
+        expr: kafka_under_replicated_partitions
+
+      - record: licensing:kafka_offline_partitions
+        expr: kafka_offline_partitions
+
+      - record: licensing:kafka_leader_elections
+        expr: kafka_controller_kafkacontroller_leaderelectionrateandtime
+
+  # License Management Metrics Recording Rules
+  - name: licensing-management-recording-rules
+    rules:
+      # License Counts by Status
+      - record: licensing:licenses:total
+        expr: count(license_info)
+
+      - record: licensing:licenses:active
+        expr: count(license_status == "active")
+
+      - record: licensing:licenses:pending
+        expr: count(license_status == "pending")
+
+      - record: licensing:licenses:suspended
+        expr: count(license_status == "suspended")
+
+      - record: licensing:licenses:revoked
+        expr: count(license_status == "revoked")
+
+      - record: licensing:licenses:expired
+        expr: count(license_status == "expired")
+
+      # License Expiry Analysis
+      - record: licensing:licenses:expiring_30d
+        expr: count(license_expiry_days <= 30 and license_expiry_days > 0)
+
+      - record: licensing:licenses:expiring_7d
+        expr: count(license_expiry_days <= 7 and license_expiry_days > 0)
+
+      - record: licensing:licenses:expired_count
+        expr: count(license_expiry_days <= 0)
+
+      # License Types Distribution
+      - record: licensing:licenses:by_type
+        expr: count(license_info) by (license_type)
+
+      # License by Jurisdiction
+      - record: licensing:licenses:by_jurisdiction
+        expr: count(license_info) by (jurisdiction)
+
+  # Compliance Metrics Recording Rules
+  - name: licensing-compliance-recording-rules
+    rules:
+      # Compliance Rates
+      - record: licensing:compliance:rate
+        expr: (count(compliance_status == "compliant")) / (count(compliance_status))
+
+      - record: licensing:compliance:violations:total
+        expr: count(compliance_violation_info)
+
+      - record: licensing:compliance:violations:by_severity
+        expr: count(compliance_violation_info) by (severity)
+
+      - record: licensing:compliance:violations:critical
+        expr: count(compliance_violation_severity == "critical")
+
+      - record: licensing:compliance:violations:high
+        expr: count(compliance_violation_severity == "high")
+
+      # Investigation Statistics
+      - record: licensing:investigations:open
+        expr: count(compliance_investigation_status == "open")
+
+      - record: licensing:investigations:closed
+        expr: count(compliance_investigation_status == "closed")
+
+      # Enforcement Actions
+      - record: licensing:enforcement:active
+        expr: count(enforcement_action_status == "active")
+
+      - record: licensing:enforcement:resolved
+        expr: count(enforcement_action_status == "resolved")
+
+      # Risk Score Trends
+      - record: licensing:risk:average
+        expr: avg(license_risk_score)
+
+      - record: licensing:risk:high_count
+        expr: count(license_risk_score >= 75)
+
+      - record: licensing:risk:critical_count
+        expr: count(license_risk_score >= 90)
+
+  # Reporting Metrics Recording Rules
+  - name: licensing-reporting-recording-rules
+    rules:
+      # Report Statistics
+      - record: licensing:reports:total
+        expr: count(report_info)
+
+      - record: licensing:reports:pending
+        expr: count(report_status == "pending")
+
+      - record: licensing:reports:submitted
+        expr: count(report_status == "submitted")
+
+      - record: licensing:reports:overdue
+        expr: count(report_deadline_passed == true)
+
+      - record: licensing:reports:approved
+        expr: count(report_status == "approved")
+
+      # SAR Statistics
+      - record: licensing:sars:pending
+        expr: count(sar_status == "pending")
+
+      - record: licensing:sars:filed
+        expr: count(sar_status == "filed")
+
+      - record: licensing:sars:closed
+        expr: count(sar_status == "closed")
+
+      # Report Processing Time
+      - record: licensing:reports:processing_time:avg
+        expr: avg(report_submitted_at - report_created_at)
+
+  # Business Metrics Aggregations
+  - name: licensing-business-metrics
+    rules:
+      # License Application Funnel
+      - record: licensing:applications:submitted
+        expr: count(license_application_status == "submitted")
+
+      - record: licensing:applications:under_review
+        expr: count(license_application_status == "under_review")
+
+      - record: licensing:applications:approved
+        expr: count(license_application_status == "approved")
+
+      - record: licensing:applications:rejected
+        expr: count(license_application_status == "rejected")
+
+      # Processing Time Metrics
+      - record: licensing:application_processing_time:avg
+        expr: avg(license_application_approved_at - license_application_submitted_at)
+
+      - record: licensing:renewal_processing_time:avg
+        expr: avg(license_renewal_approved_at - license_renewal_requested_at)
+
+      # Volume Metrics
+      - record: licensing:regulated_volume:total
+        expr: sum(license_monthly_volume_estimate)
+
+      - record: licensing:regulated_users:total
+        expr: sum(license_user_base_estimate)
+
+  # SLI/SLO Metrics
+  - name: licensing-sli-slo
+    rules:
+      # Availability
+      - record: licensing:availability:total
+        expr: (time() - process_start_time_seconds{job="csic-licensing-service"}) / 86400
+
+      - record: licensing:uptime:percentage
+        expr: (licensing:availability:total - licensing:service:downtime_seconds) / licensing:availability:total * 100
+
+      # Response Time SLI
+      - record: licensing:sli:response_time:p95
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="csic-licensing-service"}[5m]))
+
+      - record: licensing:sli:response_time:p99
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="csic-licensing-service"}[5m]))
+
+      # Error Rate SLI
+      - record: licensing:sli:error_rate
+        expr: rate(http_requests_total{job="csic-licensing-service",status=~"5.."}[5m]) / rate(http_requests_total{job="csic-licensing-service"}[5m])
+
+      # Database Query SLI
+      - record: licensing:sli:db_query_time:p95
+        expr: histogram_quantile(0.95, rate(pg_stat_statements_total_time_bucket[5m]))
+
+      # Cache Hit Rate SLI
+      - record: licensing:sli:cache_hit_rate
+        expr: redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)

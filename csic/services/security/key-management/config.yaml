@@ -1,0 +1,99 @@
+# CSIC Platform - Key Management Service Configuration
+# Production configuration following security best practices
+
+# Application Settings
+app:
+  name: "csic-key-management"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+
+# Server Settings (HTTP)
+server:
+  host: "0.0.0.0"
+  http_port: 8080
+  read_timeout: 30      # seconds
+  write_timeout: 30     # seconds
+
+# gRPC Server Settings
+grpc:
+  host: "0.0.0.0"
+  port: 50051
+  max_recv_msg_size: 4194304  # 4MB
+  max_send_msg_size: 4194304  # 4MB
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "change_in_production"
+  name: "csic_platform"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+# Redis Configuration (for caching)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  key_cache_ttl: 300  # seconds (5 minutes)
+
+# Kafka Configuration (for audit events)
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-key-management"
+  topics:
+    audit: "security.kms.audit"
+  producer:
+    acks: "all"
+    retries: 3
+
+# Security Configuration
+security:
+  # Master Key (KEK - Key Encryption Key)
+  # In production, this should be fetched from a Hardware Security Module (HSM)
+  # or a cloud KMS (AWS KMS, Azure Key Vault, GCP Cloud KMS)
+  master_key:
+    # Base64 encoded master key (32 bytes for AES-256)
+    # IMPORTANT: Never commit real keys to version control
+    # Override with environment variable: KMS_MASTER_KEY
+    key: "ZXhhbXBsZS1tYXN0ZXIta2V5LWZvci1rZXktbWFuYWdlbWVudC1zZXJ2aWNl"
+    
+  # Key rotation settings
+  rotation:
+    enabled: true
+    default_period_days: 90  # Rotate keys every 90 days by default
+    
+  # Supported algorithms
+  algorithms:
+    - "AES-256-GCM"
+    - "RSA-4096"
+    - "ECDSA-P384"
+    - "Ed25519"
+    
+  # Key usage constraints
+  key_usage:
+    - "encrypt"
+    - "decrypt"
+    - "sign"
+    - "verify"
+    - "wrap"
+    - "unwrap"
+
+# Logging Configuration
+logging:
+  level: "INFO"   # DEBUG, INFO, WARN, ERROR
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+  
+# Monitoring Configuration
+monitoring:
+  metrics_enabled: true
+  health_check_interval: 30  # seconds
+  health_path: "/health"
+  metrics_path: "/metrics"

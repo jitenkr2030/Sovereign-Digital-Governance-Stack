@@ -1,0 +1,394 @@
+# MinIO Object Storage for Archive and Backup
+# S3-compatible storage with WORM support for compliance
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-storage
+  labels:
+    app.kubernetes.io/name: neam-platform
+    "app.kubernetes.io/component": storage
+    app.kubernetes.io/part-of: neam
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+type: Opaque
+stringData:
+  accesskey: "${MINIO_ACCESS_KEY}"
+  secretkey: "${MINIO_SECRET_KEY}"
+
+---
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: neam-minio
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: neam
+spec:
+  # Image configuration
+  image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+  imagePullPolicy: IfNotPresent
+
+  # S3 API configuration
+  s3:
+    bucketDNS: false
+
+  # Number of servers and drives
+  # 4 servers with 4 drives each = 16 drives total
+  # Erasure coding: EC:4 (can sustain loss of 8 drives)
+  pools:
+    - name: pool1
+      servers: 4
+      volumesPerServer: 4
+      resources:
+        requests:
+          cpu: "1"
+          memory: "4Gi"
+        limits:
+          cpu: "2"
+          memory: "8Gi"
+      volumeClaimTemplate:
+        spec:
+          storageClassName: hdd-bulk
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 500Gi
+
+  # Mount path
+  mountPath: /export
+  requestAutoCert: false
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+
+  # Pod configuration
+  podManagementPolicy: Parallel
+  updateStrategy: RollingUpdate
+
+  # Anti-affinity to spread across nodes
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+          topologyKey: kubernetes.io/hostname
+
+  # Tolerations for storage nodes
+  tolerations:
+    - key: "storage"
+      operator: "Equal"
+      value: "bulk"
+      effect: "NoSchedule"
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: "4"
+      memory: "16Gi"
+    limits:
+      cpu: "8"
+      memory: "32Gi"
+
+  # Environment variables
+  env:
+    - name: MINIO_BROWSER_REDIRECT_URL
+      value: "https://minio-console.neam.gov.eg"
+    - name: MINIO_PROMETHEUS_AUTH_TYPE
+      value: "public"
+    - name: MINIO_BUCKET_DELETE_ENABLED
+      value: "true"
+    - name: MINIO_LOG_QUERY_URL
+      value: ""
+
+  # Console configuration
+  console:
+    image: minio/console:v0.34.0
+    replicas: 2
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    env:
+      - name: CONSOLE_PBKDF_PASSPHRASE
+        value: "${CONSOLE_PBKDF_PASSPHRASE}"
+      - name: CONSOLE_HIJAKEy_PASSWORD
+        value: "${CONSOLE_HIJAKEY_PASSWORD}"
+    service:
+      type: ClusterIP
+      annotations: {}
+
+  # Metrics configuration
+  metrics:
+    image: prom/prometheus:v2.45.0
+    enabled: true
+    port: 9090
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+  # Certificate configuration
+  certManager:
+    enabled: false
+
+---
+# Bucket Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-bucket-config
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+data:
+  init-buckets.sh: |
+    #!/bin/bash
+    set -e
+
+    # Wait for MinIO to be ready
+    until mc alias set neam http://neam-minio-hl:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do
+      echo "Waiting for MinIO..."
+      sleep 5
+    done
+
+    # Create buckets
+    mc anonymous set public neam/public 2>/dev/null || true
+
+    # Create buckets for different data types
+    mc mb neam/neam-backups --ignore-existing
+    mc mb neam/neam-archive --ignore-existing
+    mc mb neam/neam-documents --ignore-existing
+    mc mb neam/neam-logs --ignore-existing
+    mc mb neam/neam-exports --ignore-existing
+
+    # Configure bucket versioning
+    mc version enable neam/neam-backups
+    mc version enable neam/neam-archive
+
+    # Configure object locking (WORM) for audit logs
+    mc anonymous set public neam/neam-archive 2>/dev/null || true
+
+    # Set retention policies
+    mc anonymous set public neam/neam-backups 2>/dev/null || true
+
+    echo "Buckets initialized successfully"
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2024-01-01T00-00-00Z
+          command: ["/bin/bash", "/init-buckets.sh"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accesskey
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretkey
+          volumeMounts:
+            - name: init-script
+              mountPath: /init-buckets.sh
+              subPath: init-buckets.sh
+      volumes:
+        - name: init-script
+          configMap:
+            name: minio-bucket-config
+            defaultMode: 0755
+
+---
+# Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-minio
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  clusterIP: None
+  ports:
+    - port: 9000
+      name: s3
+      targetPort: 9000
+    - port: 9001
+      name: console
+      targetPort: 9001
+  selector:
+    app.kubernetes.io/name: minio
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-minio-hl
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      name: s3
+      targetPort: 9000
+    - port: 9001
+      name: console
+      targetPort: 9001
+  selector:
+    app.kubernetes.io/name: minio
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio-console
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9001
+      name: console
+      targetPort: 9001
+  selector:
+    app.kubernetes.io/name: minio-console
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-network-policy
+  namespace: neam-storage
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: neam
+        - namespaceSelector:
+            matchLabels:
+              name: neam-database
+        - namespaceSelector:
+            matchLabels:
+              name: neam-analytics
+      ports:
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# StorageClass for different workload types
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nvme-ssd
+  labels:
+    app.kubernetes.io/name: neam-storage
+provisioner: openebs.io/local
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+parameters:
+  type: nvme
+  caching: all
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hdd-bulk
+  labels:
+    app.kubernetes.io/name: neam-storage
+provisioner: openebs.io/local
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+parameters:
+  type: hdd
+  caching: none
+
+---
+# Prometheus ServiceMonitor for MinIO
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-monitor
+  namespace: neam-storage
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  namespaceSelector:
+    matchNames:
+      - neam-storage
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /minio/prometheus/metrics

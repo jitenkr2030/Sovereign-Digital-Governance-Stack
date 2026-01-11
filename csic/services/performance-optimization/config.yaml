@@ -1,0 +1,96 @@
+# Performance Optimization Service Configuration
+
+# Application Settings
+app:
+  name: "performance-optimization"
+  host: "0.0.0.0"
+  port: 8085
+  environment: "development"
+
+# Benchmark Configuration
+benchmark:
+  # Default duration for benchmarks in seconds
+  default_duration: 60
+  # Maximum concurrent goroutines for load testing
+  max_concurrency: 1000
+  # Warmup duration in seconds
+  warmup_duration: 10
+  # Number of iterations for each benchmark
+  iterations: 100
+  # Output format: json, text, html
+  output_format: "json"
+
+# Metrics Configuration
+metrics:
+  # Enable detailed metrics collection
+  detailed: true
+  # Metrics collection interval in seconds
+  collection_interval: 5
+  # Enable profiling endpoint
+  profiling_enabled: true
+  # Profiling port
+  profiling_port: 6060
+
+# Load Test Configuration
+loadtest:
+  # Default ramp-up time in seconds
+  rampup_time: 30
+  # Default steady-state time in seconds
+  steady_state_time: 60
+  # Default cool-down time in seconds
+  cool_down_time: 10
+  # Target RPS (Requests Per Second)
+  target_rps: 1000
+  # Maximum error rate threshold (percentage)
+  max_error_rate: 5.0
+
+# Profiling Configuration
+profiling:
+  # Enable CPU profiling
+  cpu_profiling: true
+  # Enable memory profiling
+  memory_profiling: true
+  # CPU profile duration in seconds
+  cpu_profile_duration: 30
+  # Memory profile allocation tracking
+  track_allocations: true
+
+# Database Configuration (for storing benchmark results)
+database:
+  host: "localhost"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_performance"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Redis Configuration (for caching metrics)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:perf:"
+  pool_size: 10
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  # Enable structured logging
+  structured: true
+
+# Report Configuration
+report:
+  # Generate HTML reports
+  html_reports: true
+  # Generate PDF reports
+  pdf_reports: false
+  # Report retention in days
+  retention_days: 30
+  # S3 bucket for report storage (optional)
+  s3_bucket: ""

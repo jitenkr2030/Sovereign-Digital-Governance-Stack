@@ -1,0 +1,53 @@
+# Chaos Mesh Installation and Configuration for NEAM Platform
+
+This Helm chart deploys Chaos Mesh to enable chaos engineering experiments in the NEAM Platform.
+
+## Prerequisites
+
+- Kubernetes cluster (v1.18+)
+- Helm 3.2.1+
+- `kubectl` configured with cluster access
+
+## Installation
+
+```bash
+# Add Helm repository
+helm repo add chaos-mesh https://charts.chaos-mesh.org
+
+# Create namespace
+kubectl create namespace chaos-mesh
+
+# Install Chaos Mesh
+helm install chaos-mesh chaos-mesh/chaos-mesh --namespace chaos-mesh \
+  --set dashboard.ingress.enabled=true \
+  --set dashboard.ingress.host=chaos-mesh.example.com
+```
+
+## Configuration
+
+The following table lists the configurable parameters of the Chaos Mesh chart:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `clusterScoped` | Whether to run cluster-scoped chaos daemon | `true` |
+| `dashboard.ingress.enabled` | Enable dashboard ingress | `false` |
+| `dashboard.ingress.host` | Dashboard hostname | `""` |
+| `controllerManager.replicas` | Controller manager replicas | `1` |
+| `chaosDaemon.replicas` | Chaos daemon replicas | `3` |
+
+## Verification
+
+```bash
+# Check pods
+kubectl get pods -n chaos-mesh
+
+# Access dashboard
+kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+```
+
+## Upgrades
+
+```bash
+# Upgrade Chaos Mesh
+helm upgrade chaos-mesh chaos-mesh/chaos-mesh --namespace chaos-mesh
+```

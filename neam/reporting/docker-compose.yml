@@ -1,0 +1,226 @@
+version: '3.8'
+
+services:
+  # Reporting Service
+  reporting:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neam-reporting
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVICE_NAME=neam-reporting
+      - GIN_MODE=release
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=neam_reporting
+      - CLICKHOUSE_USER=neam
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-neam123}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=neam_reporting
+      - POSTGRES_USER=neam
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neam123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-neam123}
+      - KAFKA_BROKERS=kafka:9092
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-neamadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-neamadmin123}
+      - EXPORT_DIR=/var/lib/neam/reporting/exports
+      - ARCHIVE_DIR=/var/lib/neam/reporting/archives
+      - EVIDENCE_RETENTION_YEARS=25
+      - METRICS_REFRESH_INTERVAL=30
+      - ANOMALY_CHECK_INTERVAL=60
+      - ARCHIVE_COMPRESSION_ALGO=zstd
+      - ARCHIVE_ENCRYPTION_ALGO=aes256
+      - RETRIEVAL_PRIORITY_DEFAULT=standard
+      - DAILY_RETENTION_DAYS=90
+      - MONTHLY_RETENTION_YEARS=10
+      - QUARTERLY_RETENTION_YEARS=20
+      - HOT_STORAGE_DAYS=7
+      - WARM_STORAGE_DAYS=90
+      - COLD_STORAGE_ENABLED=true
+    volumes:
+      - reporting_exports:/var/lib/neam/reporting/exports
+      - reporting_archives:/var/lib/neam/reporting/archives
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ClickHouse for analytics
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: neam-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: neam_reporting
+      CLICKHOUSE_USER: neam
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-neam123}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PostgreSQL for metadata
+  postgres:
+    image: postgres:15-alpine
+    container_name: neam-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: neam_reporting
+      POSTGRES_USER: neam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neam123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neam -d neam_reporting"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: neam-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-neam123}
+    volumes:
+      - redis_data:/data
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-neam123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka for event streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: neam-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: neam-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO for object storage
+  minio:
+    image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+    container_name: neam-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-neamadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-neamadmin123}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        until curl -f http://localhost:9000/minio/health/live; do sleep 2; done
+        mc alias set myminio http://localhost:9000 ${MINIO_ACCESS_KEY:-neamadmin} ${MINIO_SECRET_KEY:-neamadmin123} || true
+        mc mb myminio/neam-archives --ignore-existing || true
+        mc mb myminio/neam-exports --ignore-existing || true
+        mc anonymous set public myminio/neam-archives || true
+        mc anonymous set public myminio/neam-exports || true
+        minio server /data --console-address ":9001"
+
+volumes:
+  reporting_exports:
+    driver: local
+  reporting_archives:
+    driver: local
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  kafka_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  neam-network:
+    driver: bridge

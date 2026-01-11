@@ -1,0 +1,32 @@
+# NEAM Kubernetes Namespace Configuration
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-system
+  labels:
+    app.kubernetes.io/name: neam
+    app.kubernetes.io/instance: neam-platform
+    app.kubernetes.io/version: v1.0.0
+    app.kubernetes.io/component: platform
+    app.kubernetes.io/part-of: neam
+    neam.gov/managed: "true"
+---
+# Namespace for monitoring components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-monitoring
+  labels:
+    app.kubernetes.io/name: neam-monitoring
+    app.kubernetes.io/part-of: neam
+    neam.gov/managed: "true"
+---
+# Namespace for data stores
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-data
+  labels:
+    app.kubernetes.io/name: neam-data
+    app.kubernetes.io/part-of: neam
+    neam.gov/managed: "true"

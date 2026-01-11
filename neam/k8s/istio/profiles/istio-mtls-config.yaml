@@ -1,0 +1,474 @@
+# Istio Service Mesh Configuration for mTLS
+# Zero-Trust Network Architecture - Mutual TLS Implementation
+
+---
+# Istio ConfigurationProfile - Security Hardened
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: neam-platform-mesh
+  namespace: istio-system
+spec:
+  profile: default
+  
+  # Custom configuration for zero-trust
+  meshConfig:
+    enableAutoMtls: true
+    defaultConfig:
+      # Proxy configuration for security
+      proxyMetadata:
+        # Enable SPIRE integration
+        ISTIO_META_SPIFFE: "true"
+        ISTIO_META_SPIFFE_PREFIX: "spiffe://neam-platform.gov"
+        
+      # Tracing configuration
+      tracing:
+        sampling: 10
+        zipkin:
+          address: jaeger-collector.observability:9411
+      
+      # Resource limits
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 2000m
+          memory: 1Gi
+      
+      # Readiness probe with security settings
+      readinessProbe:
+        initialDelaySeconds: 1
+        periodSeconds: 3
+        failureThreshold: 3
+        successThreshold: 1
+      
+      # Lifecycle hooks for security
+      lifecycle:
+        preStop:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "sleep 5"
+    
+    # Default certificate configuration
+    certificates:
+      - secretName: istio-certs
+        dnsNames:
+          - istio.istio-system
+          - istio-ingressgateway.istio-system
+        subject: ""
+    
+    # Trust domain configuration
+    trustDomain: "neam-platform.gov"
+    
+    # Default mtls settings
+    defaultTlsVersion: TLSv1_3
+    defaultCipherSuites:
+      - ECDHE-RSA-AES256-GCM-SHA384
+      - ECDHE-RSA-AES128-GCM-SHA256
+      - TLS_AES_256_GCM_SHA384
+      - TLS_AES_128_GCM_SHA256
+      - TLS_CHACHA20_POLY1305_SHA256
+  
+  # Components configuration
+  components:
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        label:
+          app: istio-ingressgateway
+          istio: ingressgateway
+        k8s:
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          hpaSpec:
+            maxReplicas: 10
+            minReplicas: 2
+          strategy:
+            rollingUpdate:
+              maxSurge: 25%
+              maxUnavailable: 0
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app: istio-ingressgateway
+                    topologyKey: kubernetes.io/hostname
+          overlays:
+            - apiVersion: apps/v1
+              kind: Deployment
+              name: istio-ingressgateway
+              patches:
+                - path: spec.template.spec.containers[0].ports[0]
+                  value:
+                    containerPort: 80
+                    name: http2
+                    protocol: TCP
+                - path: spec.template.spec.ports[0]
+                  value:
+                    port: 443
+                    name: https
+                    protocol: TCP
+    
+    egressGateways:
+      - name: istio-egressgateway
+        enabled: true
+        k8s:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+    
+    policy:
+      enabled: true
+    
+    telemetry:
+      enabled: true
+  
+  # Addon configurations
+  addonComponents:
+    grafana:
+      enabled: true
+    prometheus:
+      enabled: true
+    tracing:
+      enabled: true
+---
+# Strict mTLS PeerAuthentication
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: neam-platform
+spec:
+  mtls:
+    mode: STRICT
+---
+# Per-namespace mTLS enforcement
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: mtls-strict
+  namespace: neam-platform
+spec:
+  mtls:
+    mode: STRICT
+---
+# Dashboard namespace specific mTLS
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: dashboard-mtls
+  namespace: dashboard
+spec:
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    443:
+      mode: STRICT
+---
+# API Gateway namespace specific mTLS
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: gateway-mtls
+  namespace: gateway
+spec:
+  mtls:
+    mode: STRICT
+---
+# AuthorizationPolicy - Default Deny (Zero-Trust)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: default-deny
+  namespace: neam-platform
+spec:
+  # This policy denies all requests by default
+  # Specific allows must be defined for each service
+  {}
+---
+# AuthorizationPolicy - Allow Istio System
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-istio-system
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: dashboard
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam-platform.gov/ns/istio-system/sa/istio-ingressgateway-service-account"]
+      to:
+        - operation:
+            ports: ["443"]
+---
+# AuthorizationPolicy - Allow Dashboard to Intelligence
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-dashboard-to-intelligence
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: intelligence
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam-platform.gov/ns/neam-platform/sa/dashboard-sa"]
+      to:
+        - operation:
+            ports: ["8080", "9090"]
+            methods: ["GET", "POST"]
+---
+# AuthorizationPolicy - Allow Intelligence to Intervention
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-intelligence-to-intervention
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: intervention
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam-platform.gov/ns/neam-platform/sa/intelligence-sa"]
+      to:
+        - operation:
+            ports: ["8080"]
+            methods: ["GET", "POST", "PUT"]
+---
+# AuthorizationPolicy - Allow Intervention to Reporting
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-intervention-to-reporting
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: reporting
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam-platform.gov/ns/neam-platform/sa/intervention-sa"]
+      to:
+        - operation:
+            ports: ["8080"]
+            methods: ["GET", "POST"]
+---
+# AuthorizationPolicy - Allow API Gateway to Services
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-gateway-to-services
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: intelligence
+      app: intervention
+      app: reporting
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["spiffe://neam-platform.gov/ns/gateway/sa/api-gateway-sa"]
+      to:
+        - operation:
+            ports: ["8080", "9090"]
+---
+# AuthorizationPolicy - Block Unauthenticated
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: block-unauthenticated
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: intelligence
+  action: DENY
+  rules:
+    - from:
+        - source:
+            notPrincipals: ["*"]
+      to:
+        - operation:
+            ports: ["8080"]
+---
+# RequestAuthentication - JWT Validation
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-authentication
+  namespace: neam-platform
+spec:
+  selector:
+    matchLabels:
+      app: dashboard
+  jwtRules:
+    - issuer: "neam-platform-issuer"
+      audiences:
+        - "dashboard.neam-platform.gov"
+      forwardOriginalToken: true
+      raiseErrorWithoutAlpn: true
+      # For development/testing - remove in production
+      # jwksUri: "https://auth.neam-platform.gov/.well-known/jwks.json"
+---
+# RequestAuthentication - For API Gateway
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: gateway-jwt
+  namespace: gateway
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  jwtRules:
+    - issuer: "neam-platform-issuer"
+      audiences:
+        - "api.neam-platform.gov"
+      forwardOriginalToken: true
+---
+# Sidecar Configuration - Restrict egress traffic
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: default-sidecar
+  namespace: neam-platform
+spec:
+  egress:
+    - hosts:
+        - "./neam-platform.svc.cluster.local"
+        - "istio-system/*"
+        - "observability/*"
+    - port:
+        number: 443
+        protocol: HTTPS
+        name: https-egress
+      hosts:
+        - "external-api.neam-platform.gov"
+  ingress:
+    - port:
+        number: 8080
+        protocol: HTTP
+        name: ingress-http
+      defaultEndpoint: "127.0.0.1:8080"
+---
+# Sidecar Configuration - Dashboard (restricted)
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: dashboard-sidecar
+  namespace: dashboard
+spec:
+  egress:
+    - hosts:
+        - "./dashboard.svc.cluster.local"
+        - "./neam-platform.svc.cluster.local"
+        - "istio-system/*"
+    - port:
+        number: 443
+        protocol: HTTPS
+        name: egress-https
+      hosts:
+        - "https://*.neam-platform.gov"
+---
+# Istio EnvoyFilter for additional security headers
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: security-headers
+  namespace: neam-platform
+spec:
+  workloadSelector:
+    labels:
+      neam-platform/security: "enabled"
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                -- Add security headers
+                request_handle:headers():add("X-Content-Type-Options", "nosniff")
+                request_handle:headers():add("X-Frame-Options", "DENY")
+                request_handle:headers():add("X-XSS-Protection", "1; mode=block")
+                request_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+                request_handle:headers():add("Content-Security-Policy", "default-src 'self'")
+              end
+---
+# Cleartext Traffic Block - Gateway Configuration
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: block-cleartext-gateway
+  namespace: istio-system
+spec:
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+      tls:
+        httpsRedirect: true  # Redirect HTTP to HTTPS
+---
+# HTTPS Gateway with mTLS
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: mtls-gateway
+  namespace: istio-system
+spec:
+  servers:
+    - port:
+        number: 443
+        name: https-mtls
+        protocol: HTTPS
+      hosts:
+        - "*"
+      tls:
+        mode: MUTUAL
+        credentialName: istio-ingressgateway-certs
+        minProtocolVersion: TLSv1_3
+        cipherSuites:
+          - ECDHE-RSA-AES256-GCM-SHA384
+          - TLS_AES_256_GCM_SHA384
+          - TLS_CHACHA20_POLY1305_SHA256

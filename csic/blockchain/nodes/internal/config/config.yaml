@@ -1,0 +1,154 @@
+# Application Configuration
+app:
+  name: "blockchain-nodes"
+  host: "0.0.0.0"
+  port: 8081
+  environment: "development"
+  log_level: "info"
+  api_keys:
+    - "nodes-api-key-001"
+    - "nodes-api-key-002"
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic"
+  password: "csic_secret"
+  name: "csic_nodes"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Redis Configuration (for caching and pub/sub)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:nodes:"
+  pool_size: 10
+
+# Kafka Configuration (for event streaming)
+kafka:
+  brokers:
+    - "localhost:9092"
+  consumer_group: "csic-nodes-consumers"
+  topics:
+    node_events: "csic.nodes.events"
+    node_metrics: "csic.nodes.metrics"
+  producer:
+    acks: "all"
+    retries: 3
+
+# Node Manager Settings
+node_manager:
+  # Default health check interval in seconds
+  health_check_interval: 30
+  # Maximum nodes per blockchain network
+  max_nodes_per_network: 10
+  # RPC connection timeout in seconds
+  rpc_timeout: 10
+  # Maximum concurrent RPC calls per node
+  max_concurrent_calls: 100
+  # Node offline threshold (consecutive failed health checks)
+  offline
+  # Auto_threshold: 3-recovery settings
+  auto_recovery:
+    enabled: true
+    max_retries: 3
+    retry_delay: 60
+
+# Blockchain Network Definitions
+blockchains:
+  ethereum:
+    name: "Ethereum Mainnet"
+    chain_id: 1
+    network_id: 1
+    native_currency:
+      name: "Ether"
+      symbol: "ETH"
+      decimals: 18
+    rpc_urls:
+      - "https://eth-mainnet.g.alchemy.com/v2/demo"
+      - "https://cloudflare-eth.com"
+    ws_url: "wss://eth-mainnet.g.alchemy.com/v2/demo"
+    explorer_url: "https://etherscan.io"
+    min_peers: 3
+    block_time: 12
+
+  polygon:
+    name: "Polygon Mainnet"
+    chain_id: 137
+    network_id: 137
+    native_currency:
+      name: "MATIC"
+      symbol: "MATIC"
+      decimals: 18
+    rpc_urls:
+      - "https://polygon-rpc.com"
+      - "https://rpc-mainnet.matic.network"
+    ws_url: "wss://ws-mainnet.matic.network"
+    explorer_url: "https://polygonscan.com"
+    min_peers: 2
+    block_time: 2
+
+  bsc:
+    name: "BNB Smart Chain"
+    chain_id: 56
+    network_id: 56
+    native_currency:
+      name: "BNB"
+      symbol: "BNB"
+      decimals: 18
+    rpc_urls:
+      - "https://bsc-dataseed.binance.org"
+      - "https://bsc-dataseed1.binance.org"
+    explorer_url: "https://bscscan.com"
+    min_peers: 2
+    block_time: 3
+
+  arbitrum:
+    name: "Arbitrum One"
+    chain_id: 42161
+    network_id: 42161
+    native_currency:
+      name: "Ether"
+      symbol: "ETH"
+      decimals: 18
+    rpc_urls:
+      - "https://arb1.arbitrum.io/rpc"
+      - "https://rpc.ankr.com/arbitrum"
+    explorer_url: "https://arbiscan.io"
+    min_peers: 2
+    block_time: 1
+
+  optimism:
+    name: "Optimism"
+    chain_id: 10
+    network_id: 10
+    native_currency:
+      name: "Ether"
+      symbol: "ETH"
+      decimals: 18
+    rpc_urls:
+      - "https://mainnet.optimism.io"
+      - "https://rpc.ankr.com/optimism"
+    explorer_url: "https://optimistic.etherscan.io"
+    min_peers: 2
+    block_time: 2
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+  collect_interval: 15
+
+# Logging Configuration
+logging:
+  format: "json"
+  output: "stdout"
+  level: "info"
+  include_caller: true

@@ -1,0 +1,294 @@
+# NEAM Platform Staging Environment Values
+# This file contains values for staging environment deployments
+# Staging mirrors production configuration with reduced resources
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+    environment: staging
+    version: staging
+  imagePullSecrets: []
+
+# Image configuration - use staging images
+image:
+  repository: neam-platform
+  pullPolicy: Always
+  tag: "staging"
+  pullSecrets: []
+
+# Replica configuration - medium for staging
+replicaCount: 2
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: "neam-staging-sa"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-staging-role"
+
+# Pod configuration for staging
+podAnnotations:
+  checksum/config: "staging-config"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+# Environment variables for staging
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-staging"
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector.staging:4317"
+  - name: OTEL_METRICS_EXPORTER
+    value: "otlp"
+  - name: OTEL_TRACES_EXPORTER
+    value: "otlp"
+
+# Feature flags for staging - production-like with some experiments
+featureFlags:
+  advancedAnalytics: true
+  aiPrediction: true
+  realTimeProcessing: true
+  customRules: true
+  auditLogging: true
+  debugMode: false
+  performanceMonitoring: true
+  betaFeatures: false
+
+# Resource configuration - medium for staging
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Enable autoscaling for staging
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+
+# Networking - ingress enabled for staging
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+# Enable pod disruption budgets for staging
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Health probes - standard for staging
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Database configuration - staging databases (separate from production)
+database:
+  postgresql:
+    host: "neam-staging-postgresql.staging"
+    port: 5432
+    username: "neam_staging"
+    name: "neam_staging"
+    sslMode: "require"
+    pool:
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 30m
+  redis:
+    host: "neam-staging-redis.staging"
+    port: 6379
+    password: "staging_redis_password"
+    db: 0
+    keyPrefix: "staging:"
+    pool:
+      maxIdle: 10
+      maxActive: 20
+
+# Kafka configuration - staging Kafka cluster
+kafka:
+  brokers:
+    - "neam-staging-kafka-0.staging:9092"
+    - "neam-staging-kafka-1.staging:9092"
+    - "neam-staging-kafka-2.staging:9092"
+  consumerGroup: "neam-staging"
+  autoOffsetReset: "earliest"
+
+# MongoDB configuration - staging MongoDB
+mongodb:
+  host: "neam-staging-mongodb.staging"
+  port: 27017
+  username: "neam_staging"
+  password: "staging_mongo_password"
+  database: "neam_staging"
+  authSource: "admin"
+
+# Elasticsearch configuration - staging Elasticsearch
+elasticsearch:
+  host: "neam-staging-elasticsearch.staging"
+  port: 9200
+  index: "neam-staging"
+  username: ""
+  password: ""
+
+# External services - staging endpoints
+externalServices:
+  schemaRegistry:
+    url: "http://neam-staging-schema-registry.staging:8081"
+  dataQualityService:
+    url: "http://neam-staging-data-quality.staging:8082"
+  notificationService:
+    url: "http://neam-staging-notification.staging:8083"
+
+# Vault configuration - staging vault
+vault:
+  enabled: true
+  address: "https://vault-staging.neam.io"
+  role: "neam-staging"
+  authPath: "kubernetes"
+  secretsPath: "secret/staging"
+
+# CSI Secret Provider - enabled for staging
+csiSecretProvider:
+  enabled: true
+  providerPath: "secrets-store.csi.k8s.io"
+  providerName: "vault"
+  parameters:
+    roleName: "neam-staging"
+    vaultAddress: "https://vault-staging.neam.io"
+    vaultSkipVerify: "false"
+    secrets: |
+      - secretPath: "secret/staging/database/postgresql"
+        data:
+          - objectName: "username"
+            key: "username"
+          - objectName: "password"
+            key: "password"
+      - secretPath: "secret/staging/database/redis"
+        data:
+          - objectName: "password"
+            key: "password"
+
+# Storage configuration - minimal persistent storage for staging
+persistentVolumeClaim:
+  create: false
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - sensing
+          topologyKey: kubernetes.io/hostname
+
+tolerations: []
+topologySpreadConstraints: []
+terminationGracePeriodSeconds: 30
+
+# Command override
+command: []
+args: []
+
+# Volume mounts
+volumeMounts: []
+volumes: []
+
+# Lifecycle hooks
+lifecycle: {}
+initContainers: []
+
+# DNS configuration
+dnsPolicy: ""
+dnsConfig: {}
+hostAliases: []
+schedulerName: ""
+priorityClassName: "medium-priority"

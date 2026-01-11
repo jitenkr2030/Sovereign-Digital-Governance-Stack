@@ -1,0 +1,46 @@
+# Prometheus configuration for Energy Integration Service
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: 'energy-integration'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+scrape_configs:
+  # Scrape the Energy Integration Service itself
+  - job_name: 'energy-integration'
+    static_configs:
+      - targets: ['energy-integration:8080']
+    metrics_path: '/metrics'
+    scheme: 'http'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape PostgreSQL metrics (if postgres_exporter is available)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    metric_relabel_configs:
+      - source_labels: [datname]
+        regex: 'energy_integration'
+        action: keep

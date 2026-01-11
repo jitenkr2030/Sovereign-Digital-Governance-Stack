@@ -1,0 +1,396 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-authorization
+  namespace: finance
+  labels:
+    app: finance
+    tier: api
+  annotations:
+    description: "Default deny authorization policy for finance namespace"
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-payment-processor
+  namespace: finance
+  labels:
+    app: payment-processor
+    tier: api
+  annotations:
+    description: "Authorization policy for payment processor service"
+spec:
+  selector:
+    matchLabels:
+      app: payment-processor
+  action: ALLOW
+  rules:
+    # Allow ingress from API gateway
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/api-gateway"]
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+            paths: ["/api/v1/payments/*", "/api/v1/transactions/*"]
+    # Allow internal service communication
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/finance/worker/transaction-auditor"]
+      to:
+        - operation:
+            methods: ["POST", "GET", "PUT"]
+            paths: ["/api/v1/audit/*", "/api/v1/verify/*"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health", "/ready"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-transaction-auditor
+  namespace: finance
+  labels:
+    app: transaction-auditor
+    tier: worker
+  annotations:
+    description: "Authorization policy for transaction auditor worker"
+spec:
+  selector:
+    matchLabels:
+      app: transaction-auditor
+  action: ALLOW
+  rules:
+    # Allow access to payment processor for transaction review
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/finance/api/payment-processor"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/v1/transactions/*"]
+    # Allow access to database for audit queries
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/finance/api/payment-processor"]
+      to:
+        - operation:
+            methods: ["SELECT", "INSERT", "UPDATE"]
+            paths: ["/db/audit/*"]
+    # Allow egress to external audit services (federated identity)
+    - to:
+        - operation:
+            hosts: ["audit.partner.external"]
+            methods: ["POST"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-core
+  namespace: core
+  labels:
+    app: core
+  annotations:
+    description: "Default deny authorization policy for core namespace"
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-api-gateway
+  namespace: core
+  labels:
+    app: api-gateway
+    tier: api
+  annotations:
+    description: "Authorization policy for API gateway"
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  action: ALLOW
+  rules:
+    # Allow ingress from Istio ingress gateway (external traffic)
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/ingressgateway"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            paths: ["/api/*"]
+    # Allow internal service communication
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/auth-service"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/auth/*", "/validate/*"]
+    # Allow routing to backend services
+    - to:
+        - operation:
+            hosts: ["*.finance.svc.cluster.local", "*.intelligence.svc.cluster.local"]
+            methods: ["GET", "POST"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-auth-service
+  namespace: core
+  labels:
+    app: auth-service
+    tier: api
+  annotations:
+    description: "Authorization policy for authentication service"
+spec:
+  selector:
+    matchLabels:
+      app: auth-service
+  action: ALLOW
+  rules:
+    # Allow API gateway to access authentication
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/api-gateway"]
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+            paths: ["/auth/*", "/token/*", "/user/*"]
+    # Allow database access for user lookups
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/data/postgres-primary"]
+      to:
+        - operation:
+            methods: ["SELECT"]
+            paths: ["/db/users/*"]
+    # Allow Redis for session management
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/data/redis-cache"]
+      to:
+        - operation:
+            methods: ["GET", "SET", "DEL"]
+            paths: ["/cache/sessions/*"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-intelligence
+  namespace: intelligence
+  labels:
+    app: intelligence
+  annotations:
+    description: "Default deny authorization policy for intelligence namespace"
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-analytics-engine
+  namespace: intelligence
+  labels:
+    app: analytics-engine
+    tier: api
+  annotations:
+    description: "Authorization policy for analytics engine"
+spec:
+  selector:
+    matchLabels:
+      app: analytics-engine
+  action: ALLOW
+  rules:
+    # Allow core services to access analytics
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/api-gateway"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/v1/analytics/*", "/api/v1/reports/*"]
+    # Allow signal processor to submit data
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/intelligence/worker/signal-processor"]
+      to:
+        - operation:
+            methods: ["POST", "PUT"]
+            paths: ["/api/v1/signals/*", "/api/v1/data/*"]
+    # Allow access to data services for analytics queries
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/data/postgres-primary"]
+      to:
+        - operation:
+            methods: ["SELECT"]
+            paths: ["/db/analytics/*"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-signal-processor
+  namespace: intelligence
+  labels:
+    app: signal-processor
+    tier: worker
+  annotations:
+    description: "Authorization policy for signal processor worker"
+spec:
+  selector:
+    matchLabels:
+      app: signal-processor
+  action: ALLOW
+  rules:
+    # Allow analytics engine to submit work
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/intelligence/api/analytics-engine"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/api/v1/process/*"]
+    # Allow egress to external data sources (with specific hosts)
+    - to:
+        - operation:
+            hosts: ["data.source1.external", "data.source2.external"]
+            methods: ["GET"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-data
+  namespace: data
+  labels:
+    app: data
+  annotations:
+    description: "Default deny authorization policy for data namespace"
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-postgres-primary
+  namespace: data
+  labels:
+    app: postgres-primary
+    tier: database
+  annotations:
+    description: "Authorization policy for PostgreSQL primary"
+spec:
+  selector:
+    matchLabels:
+      app: postgres-primary
+  action: ALLOW
+  rules:
+    # Allow application services database access
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/api-gateway"]
+            ["spiffe://neam.internal/core/auth-service"]
+            ["spiffe://neam/internal/finance/api/payment-processor"]
+            ["spiffe://neam.internal/intelligence/api/analytics-engine"]
+      to:
+        - operation:
+            methods: ["SELECT", "INSERT", "UPDATE", "DELETE"]
+            ports: ["5432"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]
+    # Allow replication from standby
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/data/postgres-standby"]
+      to:
+        - operation:
+            methods: ["REPLICATION"]
+            ports: ["5432"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-redis-cache
+  namespace: data
+  labels:
+    app: redis-cache
+    tier: cache
+  annotations:
+    description: "Authorization policy for Redis cache"
+spec:
+  selector:
+    matchLabels:
+      app: redis-cache
+  action: ALLOW
+  rules:
+    # Allow application services cache access
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/core/api-gateway"]
+            ["spiffe://neam.internal/core/auth-service"]
+            ["spiffe://neam.internal/finance/api/payment-processor"]
+      to:
+        - operation:
+            methods: ["GET", "SET", "DEL", "MGET", "MSET"]
+            ports: ["6379"]
+    # Allow monitoring
+    - from:
+        - source:
+            principals: ["spiffe://neam.internal/infrastructure/monitoring/prometheus"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health"]

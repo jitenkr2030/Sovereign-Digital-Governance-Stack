@@ -1,0 +1,156 @@
+# Grafana Provisioning Configuration for CSIC Licensing Service
+# This configuration defines data sources, dashboards, and alert notification channels.
+
+apiVersion: 1
+
+# Data Sources Provisioning
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
+      httpMethod: POST
+    secureJsonData:
+      httpHeaderValue1: "Bearer ${PROMETHEUS_API_KEY}"
+    editable: false
+    version: 1
+
+# Alert Notification Channels Provisioning
+notifiers:
+  - name: Default Alert Channel
+    type: slack
+    uid: default-slack
+    isDefault: true
+    sendReminder: true
+    frequency: 30m
+    disableResolveMessage: false
+    settings:
+      autoResolve: true
+      httpMethod: POST
+      uploadImage: true
+    secureSettings:
+      url: ${SLACK_WEBHOOK_URL}
+
+  - name: Critical Alert Channel
+    type: slack
+    uid: critical-slack
+    isDefault: false
+    sendReminder: true
+    frequency: 15m
+    settings:
+      autoResolve: true
+      httpMethod: POST
+      uploadImage: true
+    secureSettings:
+      url: ${CRITICAL_SLACK_WEBHOOK_URL}
+
+  - name: PagerDuty
+    type: pagerduty
+    uid: pagerduty
+    isDefault: false
+    sendReminder: true
+    frequency: 15m
+    settings:
+      autoResolve: true
+      integrationKey: ${PAGERDUTY_INTEGRATION_KEY}
+      severity: critical
+    secureSettings:
+      apiKey: ${PAGERDUTY_API_KEY}
+
+  - name: Email Notifications
+    type: email
+    uid: email
+    isDefault: false
+    sendReminder: true
+    frequency: 1h
+    settings:
+      addresses: "compliance@csic.local"
+      singleEmail: false
+      requireTls: true
+
+# Dashboard Providers
+dashboardProviders:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
+
+# Dashboards to Import
+dashboards:
+  # CSIC Licensing Service Overview
+  - folder: CSIC Licensing
+    name: Service Overview
+    uid: csic-licensing-overview
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/licensing-overview.json
+    datasource: Prometheus
+
+  # License Management Dashboard
+  - folder: CSIC Licensing
+    name: License Management
+    uid: csic-license-management
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/license-management.json
+    datasource: Prometheus
+
+  # Compliance Monitoring Dashboard
+  - folder: CSIC Licensing
+    name: Compliance Monitoring
+    uid: csic-compliance-monitoring
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/compliance-monitoring.json
+    datasource: Prometheus
+
+  # Reporting Dashboard
+  - folder: CSIC Licensing
+    name: Regulatory Reporting
+    uid: csic-regulatory-reporting
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/regulatory-reporting.json
+    datasource: Prometheus
+
+  # Database Performance Dashboard
+  - folder: Infrastructure
+    name: PostgreSQL Performance
+    uid: csic-postgresql-performance
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/postgresql-performance.json
+    datasource: Prometheus
+
+  # Cache Performance Dashboard
+  - folder: Infrastructure
+    name: Redis Performance
+    uid: csic-redis-performance
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/redis-performance.json
+    datasource: Prometheus
+
+  # Kafka Performance Dashboard
+  - folder: Infrastructure
+    name: Kafka Performance
+    uid: csic-kafka-performance
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/kafka-performance.json
+    datasource: Prometheus
+
+# Organization Preferences
+orgPreferences:
+  - orgId: 1
+    theme: dark
+    homeDashboard: csic-licensing-overview
+    timezone: UTC
+    weekStart: monday

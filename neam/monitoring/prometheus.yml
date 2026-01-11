@@ -1,0 +1,84 @@
+# NEAM Platform Prometheus Configuration
+# Monitoring configuration for all services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # NEAM Intelligence Service
+  - job_name: "neam-intelligence"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["neam-intelligence:8081"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "neam-intelligence"
+
+  # NEAM Policy Service
+  - job_name: "neam-policy"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["neam-policy:8082"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "neam-policy"
+
+  # NEAM Simulation Service
+  - job_name: "neam-simulation"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["neam-simulation:8083"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "neam-simulation"
+
+  # API Gateway
+  - job_name: "neam-api-gateway"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["neam-api-gateway:8080"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "neam-api-gateway"
+
+  # Kafka Exporter (if available)
+  - job_name: "kafka-exporter"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+    metric_relabel_configs:
+      - source_labels: [topic]
+        regex: "neam.*"
+        action: keep
+
+  # Node Exporter (for system metrics)
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # PostgreSQL Exporter
+  - job_name: "postgres-exporter"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Redis Exporter
+  - job_name: "redis-exporter"
+    static_configs:
+      - targets: ["redis-exporter:9121"]

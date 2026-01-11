@@ -1,0 +1,200 @@
+{
+  "test_name": "NEAM Platform Performance Degradation Test",
+  "description": "Comprehensive performance testing under chaos conditions",
+  
+  "load": {
+    "pattern": "constant",
+    "requests_per_second": 100,
+    "concurrency": 10,
+    "duration_seconds": 300,
+    "ramp_up_seconds": 30,
+    "ramp_down_seconds": 30,
+    "request_timeout": 30,
+    "warmup_requests": 100
+  },
+  
+  "chaos_scenarios": [
+    {
+      "name": "baseline",
+      "description": "Baseline performance measurement without chaos",
+      "chaos_type": "none",
+      "start_delay_seconds": 0,
+      "duration_seconds": 300
+    },
+    {
+      "name": "pod_failure",
+      "description": "Test performance during pod failures",
+      "chaos_type": "pod_failure",
+      "target_service": "api-gateway",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {}
+    },
+    {
+      "name": "network_latency",
+      "description": "Test performance with network latency",
+      "chaos_type": "network_latency",
+      "target_service": "payment-service",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {
+        "delay": "200ms",
+        "jitter": "50ms"
+      }
+    },
+    {
+      "name": "packet_loss",
+      "description": "Test performance with packet loss",
+      "chaos_type": "packet_loss",
+      "target_service": "user-service",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {
+        "loss_percent": "10",
+        "correlation": "50"
+      }
+    },
+    {
+      "name": "cpu_stress",
+      "description": "Test performance under CPU pressure",
+      "chaos_type": "cpu_stress",
+      "target_service": "analytics-service",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {
+        "workers": 4,
+        "load": 80
+      }
+    },
+    {
+      "name": "memory_stress",
+      "description": "Test performance under memory pressure",
+      "chaos_type": "memory_stress",
+      "target_service": "data-processor",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {
+        "workers": 2,
+        "size": "1GB"
+      }
+    },
+    {
+      "name": "service_errors",
+      "description": "Test performance with service errors",
+      "chaos_type": "service_errors",
+      "target_service": "checkout-service",
+      "target_namespace": "production",
+      "start_delay_seconds": 60,
+      "duration_seconds": 120,
+      "parameters": {
+        "error_code": 503,
+        "percentage": "20"
+      }
+    }
+  ],
+  
+  "endpoints": [
+    {
+      "path": "/api/health",
+      "method": "GET",
+      "weight": 1
+    },
+    {
+      "path": "/api/users",
+      "method": "GET",
+      "weight": 2
+    },
+    {
+      "path": "/api/users",
+      "method": "POST",
+      "weight": 1
+    },
+    {
+      "path": "/api/orders",
+      "method": "GET",
+      "weight": 2
+    },
+    {
+      "path": "/api/orders",
+      "method": "POST",
+      "weight": 1
+    },
+    {
+      "path": "/api/products",
+      "method": "GET",
+      "weight": 2
+    }
+  ],
+  
+  "thresholds": {
+    "latency_p50_degradation_percent": 50.0,
+    "latency_p95_degradation_percent": 100.0,
+    "latency_p99_degradation_percent": 200.0,
+    "throughput_degradation_percent": 30.0,
+    "error_rate_increase_percent": 5.0,
+    "cpu_utilization_threshold": 90.0,
+    "memory_utilization_threshold": 90.0
+  },
+  
+  "data_validation": {
+    "enabled": true,
+    "datastores": [
+      {
+        "type": "postgresql",
+        "host": "postgres-service.production.svc.cluster.local",
+        "port": 5432,
+        "database": "neam_platform",
+        "user": "chaos_test",
+        "scope": {
+          "tables": ["users", "orders", "products"]
+        }
+      },
+      {
+        "type": "redis",
+        "host": "redis-service.production.svc.cluster.local",
+        "port": 6379,
+        "scope": {
+          "patterns": ["session:*", "cache:*", "queue:*"]
+        }
+      },
+      {
+        "type": "mongodb",
+        "connection_string": "mongodb://mongodb-service.production.svc.cluster.local:27017",
+        "database": "neam_platform",
+        "scope": {
+          "collections": ["sessions", "events", "metrics"]
+        }
+      }
+    ],
+    "check_interval": 10,
+    "consistency_threshold": 0.99
+  },
+  
+  "reporting": {
+    "output_directory": "/tmp/chaos-performance",
+    "generate_html": true,
+    "generate_json": true,
+    "generate_graphs": true,
+    "send_alerts": false,
+    "alert_webhook": ""
+  },
+  
+  "safety": {
+    "auto_abort": {
+      "enabled": true,
+      "conditions": {
+        "error_rate_threshold": 50.0,
+        "latency_p99_threshold_ms": 5000,
+        "cpu_utilization_threshold": 95.0
+      }
+    },
+    "notify_on_start": true,
+    "notify_on_complete": true,
+    "notify_on_abort": true
+  }
+}

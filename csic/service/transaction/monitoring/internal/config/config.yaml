@@ -1,0 +1,241 @@
+# Transaction Monitoring Service Configuration
+# Crypto State Infrastructure Contractor (CSIC) - Transaction Monitoring & Risk Intelligence
+
+app:
+  name: "transaction-monitoring-service"
+  environment: "development"
+  version: "1.0.0"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  idle_timeout: 120
+
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_user"
+  password: "change_me_in_production"
+  name: "csic_transaction_monitoring"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  username: "neo4j"
+  password: "change_me_in_production"
+  database: "neo4j"
+  max_conn_pool: 50
+  connection_timeout: 30
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  key_prefix: "csic:txn:"
+
+blockchain:
+  bitcoin:
+    enabled: true
+    rpc_user: "bitcoinrpc"
+    rpc_password: "change_me_in_production"
+    rpc_host: "localhost"
+    rpc_port: 8332
+    use_tls: false
+    wallet_name: "csic_wallet"
+  ethereum:
+    enabled: true
+    rpc_endpoint: "http://localhost:8545"
+    ws_endpoint: "ws://localhost:8546"
+    chain_id: 1
+    contract_addr: ""
+  chains:
+    - id: "bitcoin"
+      name: "Bitcoin"
+      type: "UTXO"
+      rpc_endpoint: "http://localhost:8332"
+      start_block: 0
+      confirmations: 6
+    - id: "ethereum"
+      name: "Ethereum"
+      type: "Account"
+      rpc_endpoint: "http://localhost:8545"
+      start_block: 0
+      confirmations: 12
+    - id: "bitcoin-testnet"
+      name: "Bitcoin Testnet"
+      type: "UTXO"
+      rpc_endpoint: "http://localhost:18332"
+      start_block: 0
+      confirmations: 6
+    - id: "ethereum-sepolia"
+      name: "Ethereum Sepolia"
+      type: "Account"
+      rpc_endpoint: "https://rpc.sepolia.org"
+      start_block: 0
+      confirmations: 12
+
+risk_scoring:
+  critical_threshold: 80
+  high_threshold: 60
+  medium_threshold: 40
+  sanctions_list_url: "https://sanctionslist.ofac.treasury.gov"
+  refresh_interval: "24h"
+  enable_real_time: true
+  rules:
+    - id: "sanctions_exposure"
+      name: "Sanctions Exposure"
+      category: "regulatory"
+      score: 100
+      enabled: true
+      description: "Transaction involves sanctioned wallet addresses"
+      parameters:
+        threshold: 0
+    - id: "mixing_service_usage"
+      name: "Mixing Service Usage"
+      category: "privacy"
+      score: 85
+      enabled: true
+      description: "Transaction uses known mixing services"
+      parameters:
+        known_mixers:
+          - "WasabiWallet"
+          - "SamouraiWallet"
+          - "Blender"
+          - "Helix"
+    - id: "large_transaction"
+      name: "Large Transaction"
+      category: "volume"
+      score: 60
+      enabled: true
+      description: "Transaction exceeds threshold amount"
+      parameters:
+        threshold_usd: 10000
+    - id: "rapid_movement"
+      name: "Rapid Fund Movement"
+      category: "velocity"
+      score: 70
+      enabled: true
+      description: "Funds moved rapidly through multiple wallets"
+      parameters:
+        time_window_hours: 24
+        min_hops: 3
+    - id: "new_wallet_activity"
+      name: "New Wallet Activity"
+      category: "behavioral"
+      score: 30
+      enabled: true
+      description: "New wallet with significant activity"
+      parameters:
+        age_days_threshold: 7
+        volume_threshold_usd: 5000
+    - id: "exchange_hop"
+      name: "Exchange Hop"
+      category: "pattern"
+      score: 50
+      enabled: true
+      description: "Rapid transfer between exchanges"
+      parameters:
+        known_exchanges:
+          - "binance"
+          - "coinbase"
+          - "kraken"
+          - "gemini"
+    - id: "darknet_exposure"
+      name: "Darknet Market Exposure"
+      category: "illegal"
+      score: 90
+      enabled: true
+      description: "Transaction linked to known darknet market"
+      parameters:
+        known_markets:
+          - "SilkRoad"
+          - "AlphaBay"
+          - "Hansa"
+    - id: "structuring_pattern"
+      name: "Structuring Pattern"
+      category: "aml"
+      score: 75
+      enabled: true
+      description: "Pattern suggests structuring to avoid reporting thresholds"
+      parameters:
+        threshold_usd: 10000
+        time_window_days: 30
+        min_transactions: 3
+
+clustering:
+  enabled: true
+  common_input_enabled: true
+  deposit_cluster_enabled: true
+  change_link_enabled: true
+  batch_interval: "5m"
+  retention_days: 365
+  max_cluster_depth: 10
+
+alerting:
+  enabled: true
+  critical_webhooks:
+    - "https://alerts.csic.gov/critical"
+    - "https://slack.csic.gov/alerts/critical"
+  high_webhooks:
+    - "https://alerts.csic.gov/high"
+    - "https://slack.csic.gov/alerts/high"
+  email_enabled: true
+  smtp_config:
+    host: "smtp.csic.gov"
+    port: 587
+    username: "alerts@csic.gov"
+    password: "change_me_in_production"
+    from: "CSIC Alert System <alerts@csic.gov>"
+  retention_days: 90
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  include_caller: true
+  fields:
+    service: "transaction-monitoring"
+    environment: "development"
+
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+  prefix: "csic_txn"
+
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+  cors:
+    enabled: true
+    allowed_origins:
+      - "https://regulator.csic.gov"
+      - "https://dashboard.csic.gov"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-Request-ID"
+    max_age: 86400
+  auth:
+    enabled: true
+    jwt_secret: "change_me_in_production_use_strong_secret"
+    token_expiry: "24h"

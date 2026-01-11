@@ -1,0 +1,504 @@
+# Network Policies - Zero-Trust Network Segmentation
+# Calico/Cilium NetworkPolicy definitions for namespace isolation
+# and least-privilege network access
+
+---
+# Namespace Labels for Network Policy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-platform
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dashboard
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: intelligence
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: intervention
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reporting
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    neam-platform/security: "enabled"
+    network-policy: "strict"
+---
+# Default Deny Policy - Global (applied to all namespaces with security label)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: neam-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+# Default Deny - Dashboard Namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-dashboard
+  namespace: dashboard
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+# Default Deny - Intelligence Namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-intelligence
+  namespace: intelligence
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+# Default Deny - Intervention Namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-intervention
+  namespace: intervention
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+# DNS Egress Allow - All secured namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: neam-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Dashboard Egress - Allow to Intelligence
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dashboard-egress
+  namespace: dashboard
+spec:
+  podSelector:
+    matchLabels:
+      app: dashboard
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: intelligence
+          podSelector:
+            matchLabels:
+              app: intelligence
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Intelligence Ingress - Allow from Dashboard
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intelligence-ingress-dashboard
+  namespace: intelligence
+spec:
+  podSelector:
+    matchLabels:
+      app: intelligence
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: dashboard
+          podSelector:
+            matchLabels:
+              app: dashboard
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Intelligence Egress - Allow to Intervention
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intelligence-egress
+  namespace: intelligence
+spec:
+  podSelector:
+    matchLabels:
+      app: intelligence
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: intervention
+          podSelector:
+            matchLabels:
+              app: intervention
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Intervention Ingress - Allow from Intelligence
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intervention-ingress
+  namespace: intervention
+spec:
+  podSelector:
+    matchLabels:
+      app: intervention
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: intelligence
+          podSelector:
+            matchLabels:
+              app: intelligence
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Intervention Egress - Allow to Reporting
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intervention-egress-reporting
+  namespace: intervention
+spec:
+  podSelector:
+    matchLabels:
+      app: intervention
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: reporting
+          podSelector:
+            matchLabels:
+              app: reporting
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Reporting Ingress - Allow from Intervention
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-reporting-ingress
+  namespace: reporting
+spec:
+  podSelector:
+    matchLabels:
+      app: reporting
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: intervention
+          podSelector:
+            matchLabels:
+              app: intervention
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Gateway Egress - Allow to all services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-egress
+  namespace: gateway
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: intelligence
+          podSelector:
+            matchLabels:
+              app: intelligence
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: intervention
+          podSelector:
+            matchLabels:
+              app: intervention
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: reporting
+          podSelector:
+            matchLabels:
+              app: reporting
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Service Ingress - Allow from Gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-service-ingress-gateway
+  namespace: intelligence
+spec:
+  podSelector:
+    matchLabels:
+      app: intelligence
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchLabels:
+              app: api-gateway
+---
+# Monitoring Access - All services to Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-egress
+  namespace: neam-platform
+spec:
+  podSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+          podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# Observability Namespace - Allow from all secured namespaces
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-observability-ingress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              neam-platform/security: "enabled"
+---
+# Istio System - Allow mutual TLS traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-system
+  namespace: istio-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              neam-platform/security: "enabled"
+---
+# Database Access - Restrict to application pods only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-access
+  namespace: database
+spec:
+  podSelector:
+    matchLabels:
+      tier: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: intelligence
+          podSelector:
+            matchLabels:
+              app: intelligence
+        - namespaceSelector:
+            matchLabels:
+              name: intervention
+          podSelector:
+            matchLabels:
+              app: intervention
+        - namespaceSelector:
+            matchLabels:
+              name: reporting
+          podSelector:
+            matchLabels:
+              app: reporting
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+---
+# Egress Control - Allow only specific external destinations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-controlled-egress
+  namespace: neam-platform
+spec:
+  podSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  policyTypes:
+    - Egress
+  egress:
+    # DNS (required for service discovery)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Kubernetes API server
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+            except:
+              - 10.244.0.0/16  # Exclude pod network
+              - 10.96.0.0/12   # Exclude service network
+      ports:
+        - protocol: TCP
+          port: 443
+    
+    # Specific external APIs (add as needed)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: HTTPS
+          port: 443
+---
+# No Internet Access - Block direct internet for sensitive workloads
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: block-internet-access
+  namespace: intelligence
+spec:
+  podSelector:
+    matchLabels:
+      sensitivity: high
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16

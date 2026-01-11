@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  health-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-health-monitor
+    ports:
+      - "8081:8081"
+      - "9091:9091"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://csic:csic_secret@postgres:5432/csic_platform?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - KAFKA_BROKERS=kafka:9092
+      - LOG_LEVEL=info
+      - HTTP_PORT=8081
+      - METRICS_PORT=9091
+    volumes:
+      - ./internal/config/config.yaml:/etc/health-monitor/config.yaml:ro
+      - health-monitor-logs:/var/log/health-monitor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  health-monitor-logs:
+
+networks:
+  csic-network:
+    external: true

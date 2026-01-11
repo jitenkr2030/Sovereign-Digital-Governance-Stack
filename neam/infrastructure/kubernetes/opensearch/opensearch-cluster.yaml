@@ -1,0 +1,521 @@
+# OpenSearch Cluster for Search and Log Analytics
+# Production-ready configuration with security features
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neam-search
+  labels:
+    app.kubernetes.io/name: neam-platform
+    app.kubernetes.io/component: search
+    app.kubernetes.io/part-of: neam
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-config
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+data:
+  opensearch.yml: |
+    # OpenSearch Configuration
+    cluster.name: neam-opensearch
+
+    # Node roles
+    node.name: ${NODE_NAME}
+    node.roles: [ ${NODE_ROLES} ]
+
+    # Paths
+    path.data: /usr/share/opensearch/data
+    path.logs: /var/log/opensearch
+
+    # Network
+    network.host: 0.0.0.0
+    http.port: 9200
+    transport.port: 9300
+
+    # Discovery
+    discovery.type: single-node
+    cluster.initial_master_nodes: []
+
+    # Security
+    plugins.security.disabled: false
+    plugins.security.ssl.http.enabled: true
+    plugins.security.ssl.http.pemcert_filepath: certs/tls.crt
+    plugins.security.ssl.http.pemkey_filepath: certs/tls.key
+    plugins.security.ssl.http.pemtrustedcas_filepath: certs/ca.crt
+    plugins.security.ssl.transport.enabled: true
+    plugins.security.ssl.transport.pemcert_filepath: certs/tls.crt
+    plugins.security.ssl.transport.pemkey_filepath: certs/tls.key
+    plugins.security.ssl.transport.pemtrustedcas_filepath: certs/ca.crt
+
+    # Authentication
+    plugins.security.authcz.admin_dn:
+      - CN=admin,OU=NEAM,O=Government,L=Cairo,C=EG
+
+    # Indices
+    indices.memory.index_buffer_size: 20%
+    indices.queries.cache.size: 10%
+
+    # Query settings
+    search.max_buckets: 100000
+    script.max_compilations_rate: 100/1m
+
+    # Performance
+    thread_pool.write.queue_size: 1000
+    thread_pool.search.queue_size: 1000
+
+  # Custom OpenSearch Dashboards configuration
+  opensearch_dashboards.yml: |
+    server.name: neam-opensearch-dashboards
+    server.host: "0.0.0.0"
+    server.port: 5601
+    opensearch.hosts: ["https://localhost:9200"]
+    opensearch.ssl.verificationMode: none
+    opensearch.username: admin
+    opensearch.password: ${DASHBOARDS_PASSWORD}
+    opensearch.requestHeadersAllowlist: ["securitytenant", "Authorization"]
+    newsfeed.enabled: false
+    telemetry.optIn: false
+    security.showAppHeader: false
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: opensearch-certificates
+  namespace: neam-search
+  type: kubernetes.io/tls
+data:
+  # Base64 encoded certificates (will be generated during deployment)
+  ca.crt: ${CA_CRT_BASE64}
+  tls.crt: ${TLS_CRT_BASE64}
+  tls.key: ${TLS_KEY_BASE64}
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: opensearch-credentials
+  namespace: neam-search
+  type: Opaque
+stringData:
+  admin-username: admin
+  admin-password: ${OPENSEARCH_ADMIN_PASSWORD}
+  dashboards-username: admin
+  dashboards-password: ${DASHBOARDS_PASSWORD}
+  readonly-username: readonly
+  readonly-password: ${OPENSEARCH_READONLY_PASSWORD}
+
+---
+apiVersion: opensearch.opster.io/v1
+kind: OpenSearchCluster
+metadata:
+  name: neam-opensearch
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+    app.kubernetes.io/instance: neam
+    app.kubernetes.io/component: search
+    app.kubernetes.io/part-of: neam
+spec:
+  general:
+    serviceName: neam-opensearch
+    httpPort: 9200
+    transportPort: 9300
+    pluginDir: /usr/share/opensearch/plugins
+    dataPath: /usr/share/opensearch/data
+    maxHeapSize: "1g"
+    garbageCollection: openjdk
+    javaOpts: "-Xms1g -Xmx1g -XX:+UseG1GC -XX:G1ReservePercent=25 -XX:InitiatingHeapOccupancyPercent=30"
+    gracefulTermination: true
+
+  security:
+    tls:
+      transport:
+        generate: true
+      http:
+        generate: true
+    config:
+      admin:
+        secretName: opensearch-certificates
+        keyName: admin-key
+        certName: admin-cert
+
+  dashboards:
+    enabled: true
+    replicas: 2
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+    env:
+      - name: OPENSEARCH_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: opensearch-credentials
+            key: dashboards-username
+      - name: OPENSEARCH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: opensearch-credentials
+            key: dashboards-password
+
+  nodes:
+    - roles:
+        - master
+        - data
+        - ingest
+      replicas: 3
+      resources:
+        requests:
+          cpu: "2"
+          memory: "4Gi"
+        limits:
+          cpu: "4"
+          memory: "8Gi"
+      storage:
+        persistentVolumeClaim:
+          spec:
+            storageClassName: nvme-ssd
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 200Gi
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: neam-opensearch
+              topologyKey: kubernetes.io/hostname
+
+  confMgmt:
+    smartos:
+      ifRequestedByAdmin: false
+    autoScaler:
+      enabled: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-opensearch
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+    - name: transport
+      port: 9300
+      targetPort: transport
+  selector:
+    app.kubernetes.io/name: neam-opensearch
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-opensearch-headless
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+spec:
+  clusterIP: None
+  ports:
+    - name: http
+      port: 9200
+    - name: transport
+      port: 9300
+  selector:
+    app.kubernetes.io/name: neam-opensearch
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neam-opensearch-dashboards
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch-dashboards
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 5601
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: neam-opensearch-dashboards
+
+---
+# OpenSearch Index State Management Policy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-ism-policies
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+data:
+  audit-logs-policy.json: |
+    {
+      "policy": {
+        "description": "Policy for audit log indices",
+        "default_state": "hot",
+        "states": [
+          {
+            "name": "hot",
+            "actions": [
+              {
+                "rollover": {
+                  "min_index_age": "1d",
+                  "min_doc_count": 1000000
+                }
+              }
+            ],
+            "transitions": [
+              {
+                "state_name": "warm",
+                "conditions": {
+                  "min_index_age": "7d"
+                }
+              }
+            ]
+          },
+          {
+            "name": "warm",
+            "actions": [
+              {
+                "shrink": {
+                  "number_of_shards": 1
+                }
+              },
+              {
+                "forcemerge": {
+                  "max_num_segments": 1
+                }
+              }
+            ],
+            "transitions": [
+              {
+                "state_name": "cold",
+                "conditions": {
+                  "min_index_age": "30d"
+                }
+              }
+            ]
+          },
+          {
+            "name": "cold",
+            "actions": [
+              {
+                "cold": {}
+              }
+            ],
+            "transitions": [
+              {
+                "state_name": "delete",
+                "conditions": {
+                  "min_index_age": "365d"
+                }
+              }
+            ]
+          },
+          {
+            "name": "delete",
+            "actions": [
+              {
+                "delete": {}
+              }
+            ],
+            "transitions": []
+          }
+        ]
+      }
+    }
+
+  system-logs-policy.json: |
+    {
+      "policy": {
+        "description": "Policy for system log indices",
+        "default_state": "hot",
+        "states": [
+          {
+            "name": "hot",
+            "actions": [],
+            "transitions": [
+              {
+                "state_name": "warm",
+                "conditions": {
+                  "min_index_age": "3d"
+                }
+              }
+            ]
+          },
+          {
+            "name": "warm",
+            "actions": [
+              {
+                "forcemerge": {
+                  "max_num_segments": 1
+                }
+              }
+            ],
+            "transitions": [
+              {
+                "state_name": "delete",
+                "conditions": {
+                  "min_index_age": "30d"
+                }
+              }
+            ]
+          },
+          {
+            "name": "delete",
+            "actions": [
+              {
+                "delete": {}
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opensearch-network-policy
+  namespace: neam-search
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: neam-opensearch
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: neam
+        - namespaceSelector:
+            matchLabels:
+              name: neam-search
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 9300
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9200
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# Index templates for NEAM data
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-index-templates
+  namespace: neam-search
+  labels:
+    app.kubernetes.io/name: neam-opensearch
+data:
+  audit-logs-template.json: |
+    {
+      "index_patterns": ["audit-logs-*"],
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "refresh_interval": "5s"
+      },
+      "mappings": {
+        "properties": {
+          "timestamp": { "type": "date" },
+          "event_id": { "type": "keyword" },
+          "event_type": { "type": "keyword" },
+          "user_id": { "type": "keyword" },
+          "action": { "type": "keyword" },
+          "resource_type": { "type": "keyword" },
+          "resource_id": { "type": "keyword" },
+          "metadata": { "type": "object", "enabled": false },
+          "ip_address": { "type": "ip" },
+          "user_agent": { "type": "text" }
+        }
+      }
+    }
+
+  system-logs-template.json: |
+    {
+      "index_patterns": ["system-logs-*"],
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "refresh_interval": "5s"
+      },
+      "mappings": {
+        "properties": {
+          "@timestamp": { "type": "date" },
+          "level": { "type": "keyword" },
+          "service": { "type": "keyword" },
+          "host": { "type": "keyword" },
+          "message": { "type": "text" },
+          "trace_id": { "type": "keyword" },
+          "span_id": { "type": "keyword" }
+        }
+      }
+    }
+
+  documents-template.json: |
+    {
+      "index_patterns": ["neam-documents-*"],
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "analysis": {
+          "analyzer": {
+            "arabic_analyzer": {
+              "type": "arabic"
+            },
+            "english_analyzer": {
+              "type": "english"
+            }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+          "title": { "type": "text", "analyzer": "standard" },
+          "content": { "type": "text", "analyzer": "standard" },
+          "document_type": { "type": "keyword" },
+          "department": { "type": "keyword" },
+          "created_at": { "type": "date" },
+          "created_by": { "type": "keyword" },
+          "tags": { "type": "keyword" }
+        }
+      }
+    }

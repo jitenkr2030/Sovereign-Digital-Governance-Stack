@@ -1,0 +1,154 @@
+version: '3.8'
+
+services:
+  access-control:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: access-control-service
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_NAME=access-control-service
+      - ENV=production
+      - HOST=0.0.0.0
+      - PORT=8080
+      
+      # PostgreSQL Configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=csic_platform
+      - POSTGRES_SSL_MODE=disable
+      - POSTGRES_MAX_OPEN_CONNS=25
+      - POSTGRES_MAX_IDLE_CONNS=5
+      - POSTGRES_CONN_MAX_LIFETIME=300
+      
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_KEY_PREFIX=ac:
+      
+      # Kafka Configuration
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=access-control-events
+      - KAFKA_CONSUMER_GROUP=access-control-service
+      - KAFKA_MIN_BYTES=1
+      - KAFKA_MAX_BYTES=10485760
+      - KAFKA_MAX_WAIT=5
+      - KAFKA_START_OFFSET=-2
+      
+      # Logging Configuration
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      
+      # Metrics Configuration
+      - METRICS_ENABLED=true
+      - METRICS_PORT=9090
+      
+      # Cache Configuration
+      - POLICY_CACHE_TTL=300
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: access-control-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=csic_platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/migrations
+    ports:
+      - "5432:5432"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: access-control-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: access-control-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: access-control-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - csic-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  csic-network:
+    driver: bridge

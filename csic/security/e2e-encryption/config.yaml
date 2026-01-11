@@ -1,0 +1,110 @@
+# E2E Encryption Service Configuration
+
+# Application Settings
+app:
+  name: "e2e-encryption"
+  environment: "development"
+
+# Encryption Configuration
+encryption:
+  # Default algorithm: AES-256-GCM, ChaCha20-Poly1305
+  algorithm: "AES-256-GCM"
+  # Key derivation function: PBKDF2, Scrypt, Argon2
+  key_derivation: "Argon2"
+  # Key rotation period in days
+  key_rotation_period: 90
+  # Master key identifier
+  master_key_id: "master-key-v1"
+
+# Key Management Configuration
+key_management:
+  # Storage backend: hsm, vault, database, file
+  storage_backend: "database"
+  # HSM configuration (if using HSM)
+  hsm:
+    enabled: false
+    provider: "pkcs11"
+    slot: 0
+    pin: ""
+  # Vault configuration (if using Vault)
+  vault:
+    enabled: false
+    address: "http://localhost:8200"
+    token: ""
+    mount_point: "secret"
+  # Database configuration
+  database:
+    enabled: true
+    key_table: "encryption_keys"
+  # File configuration
+  file:
+    enabled: false
+    key_path: "/etc/csic/keys"
+    backup_path: "/backup/keys"
+
+# Session Key Configuration
+session_keys:
+  # Ephemeral key lifetime in minutes
+  lifetime: 60
+  # Maximum session keys per context
+  max_keys: 1000
+  # Key agreement protocol: ECDH, DH
+  protocol: "ECDH"
+  # Curve for ECDH: P-256, P-384, P-521
+  curve: "P-256"
+
+# Authentication Configuration
+authentication:
+  # Authentication method: api_key, oauth2, mutual_tls
+  method: "api_key"
+  # API key header name
+  api_key_header: "X-API-Key"
+  # OAuth2 configuration
+  oauth2:
+    enabled: false
+    issuer: ""
+    audience: ""
+
+# Audit Configuration
+audit:
+  enabled: true
+  # Log key access events
+  log_key_access: true
+  # Log encryption operations
+  log_operations: true
+  # Retention period for audit logs in days
+  retention_days: 365
+
+# Network Configuration
+network:
+  host: "0.0.0.0"
+  port: 8086
+  # TLS configuration
+  tls:
+    enabled: true
+    cert_path: "/etc/csic/certs/server.crt"
+    key_path: "/etc/csic/certs/server.key"
+    min_version: "1.2"
+    # Client certificate authentication
+    client_auth: false
+    ca_path: ""
+
+# Rate Limiting
+rate_limit:
+  enabled: true
+  # Requests per second
+  rps: 1000
+  # Burst size
+  burst: 100
+  # IP whitelist
+  whitelist: []
+  # IP blacklist
+  blacklist: []
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  # Enable structured logging
+  structured: true

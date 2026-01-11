@@ -1,0 +1,291 @@
+# Mining Control Service Configuration
+# Crypto State Infrastructure Contractor (CSIC) Platform
+
+# Application Configuration
+app:
+  name: "csic-mining-control"
+  environment: "development"
+  version: "1.0.0"
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8083
+  read_timeout: 15
+  write_timeout: 15
+  idle_timeout: 60
+
+# Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  username: "csic_mining"
+  password: "mining_password"
+  name: "csic_mining"
+  ssl_mode: "require"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+  # TimescaleDB configuration for time-series data
+  timescaledb:
+    enabled: true
+    chunk_interval: "7d"
+    retention_interval: "365d"
+
+# Redis Configuration
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  key_prefix: "csic:mining:"
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic_prefix: "csic.mining."
+  consumer_group: "mining-workers"
+  topics:
+    telemetry: "mining.telemetry"
+    violations: "mining.violations"
+    compliance: "mining.compliance"
+    events: "mining.events"
+
+# Registration Configuration
+registration:
+  # Geographic restrictions
+  geo_restrictions:
+    enabled: true
+    banned_regions:
+      - "XX-EXCLUDED-1"
+      - "XX-EXCLUDED-2"
+    restricted_regions:
+      - "XX-RESTRICTED-1"
+    allowed_energy_sources:
+      - "RENEWABLE"
+      - "MIXED"
+      - "LOW_CARBON"
+
+  # Machine registration
+  machine:
+    max_machines_per_pool: 100000
+    require_model_registration: true
+    allowed_machine_types:
+      - "ASIC"
+      - "GPU"
+      - "FPGA"
+      - "CPU"
+
+  # License configuration
+  license:
+    default_validity_days: 365
+    renewal_notification_days: 30
+    require_compliance_check: true
+
+# Energy Monitoring Configuration
+energy_monitoring:
+  # Thresholds
+  thresholds:
+    warning_limit_percent: 80
+    critical_limit_percent: 100
+    overage_grace_period_minutes: 15
+
+  # Carbon footprint calculation
+  carbon:
+    grid_emission_factors:
+      default: 0.5  # kg CO2 per kWh
+      by_region:
+        "US-CA": 0.3
+        "US-WA": 0.1
+        "IS": 0.02
+        "NO": 0.02
+    renewable_credit: 0.02
+
+  # Energy source types
+  source_types:
+    - name: "GRID"
+      carbon_factor: 0.5
+    - name: "SOLAR"
+      carbon_factor: 0.02
+    - name: "HYDRO"
+      carbon_factor: 0.02
+    - name: "WIND"
+      carbon_factor: 0.01
+    - name: "NUCLEAR"
+      carbon_factor: 0.02
+    - name: "COAL"
+      carbon_factor: 0.9
+    - name: "NATURAL_GAS"
+      carbon_factor: 0.4
+    - name: "MIXED"
+      carbon_factor: 0.35
+
+  # Reporting intervals
+  telemetry:
+    min_interval_seconds: 60
+    max_interval_seconds: 3600
+    batch_size: 1000
+
+# Hash Rate Monitoring Configuration
+hashrate_monitoring:
+  # Thresholds
+  thresholds:
+    anomaly_stddev: 3.0
+    min_reported_hashrate: 0.001
+    max_reported_hashrate: 1000000
+
+  # Validation
+  validation:
+    power_hashrate_ratio_min: 0.001  # TH/s per Watt
+    power_hashrate_ratio_max: 0.1
+    worker_count_min: 1
+    worker_count_max: 1000000
+
+  # Reporting intervals
+  telemetry:
+    min_interval_seconds: 60
+    max_interval_seconds: 3600
+
+# Compliance Configuration
+compliance:
+  # Check intervals
+  check_interval: 3600  # seconds
+  daily_report_time: "06:00"
+
+  # Certificate configuration
+  certificate:
+    validity_days: 90
+    auto_renewal: true
+    require_inspection: false
+
+  # Violation severity levels
+  violation_severity:
+    - name: "LOW"
+      auto_resolve: true
+      retention_days: 30
+    - name: "MEDIUM"
+      auto_resolve: false
+      retention_days: 90
+    - name: "HIGH"
+      auto_resolve: false
+      retention_days: 180
+    - name: "CRITICAL"
+      auto_resolve: false
+      retention_days: 365
+
+# Enforcement Configuration
+enforcement:
+  # Automatic actions
+  auto_suspend:
+    enabled: true
+    threshold: "CRITICAL"
+    grace_period_minutes: 30
+
+  # Alert configuration
+  alert:
+    enabled: true
+    email_enabled: false
+    webhook_enabled: true
+    webhook_url: "https://alerts.csic.gov/webhook"
+
+  # Integration with Exchange Surveillance
+  exchange_surveillance:
+    enabled: true
+    wallet_freeze_threshold: "HIGH"
+
+# Regional Configuration
+regional:
+  # Regional energy limits (kW)
+  energy_limits:
+    default: 100000
+    by_region:
+      "US": 500000
+      "CN": 300000
+      "RU": 200000
+      "IR": 0
+      "KP": 0
+
+  # Regional restrictions
+  restrictions:
+    - region_code: "XX-BANNED-1"
+      status: "BANNED"
+      reason: "Energy crisis zone"
+    - region_code: "XX-RESTRICTED-1"
+      status: "RESTRICTED"
+      max_energy_kw: 50000
+      allowed_energy_sources: ["RENEWABLE"]
+
+# Integration Configuration
+integration:
+  # Compliance Management Service
+  compliance_service:
+    enabled: true
+    endpoint: "http://localhost:8081"
+    timeout: 5
+    cache_ttl: 300
+
+  # Exchange Surveillance Service
+  exchange_surveillance:
+    enabled: true
+    endpoint: "http://localhost:8080"
+    timeout: 5
+
+  # Audit Log Service
+  audit_log:
+    enabled: true
+    endpoint: "http://localhost:8082"
+    batch_size: 100
+    flush_interval: 5
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  include_caller: true
+
+  fields:
+    service: "mining-control"
+    environment: "development"
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9093
+
+  custom:
+    enabled: true
+    prefix: "csic_mining"
+
+# Security Configuration
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst_size: 100
+
+  cors:
+    enabled: true
+    allowed_origins:
+      - "https://admin.csic.gov"
+      - "https://dashboard.csic.gov"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "PATCH"
+      - "DELETE"
+    allowed_headers:
+      - "Authorization"
+      - "Content-Type"
+      - "X-Request-ID"
+    max_age: 86400

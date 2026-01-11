@@ -1,0 +1,440 @@
+# Chaos Experiment Templates for NEAM Platform
+# 
+# This file contains reusable experiment templates that can be applied
+# directly or customized for specific testing scenarios.
+#
+# Usage:
+#   kubectl apply -f templates.yaml
+#   kubectl apply -f templates.yaml -l template=critical-path
+#
+
+---
+# Template: Critical Path Testing
+# Tests the main user-facing services in the critical path
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-critical-path-latency
+  namespace: chaos-experiments
+  labels:
+    template: critical-path
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: frontend
+  mode: all
+  action: delay
+  delay:
+    latency: 100ms
+    jitter: 20ms
+  direction: both
+  duration: 5m
+
+---
+# Template: Database Resilience
+# Tests system behavior when database latency increases
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-database-latency
+  namespace: chaos-experiments
+  labels:
+    template: database-resilience
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: database
+  mode: all
+  action: delay
+  delay:
+    latency: 200ms
+    jitter: 50ms
+  direction: both
+  duration: 10m
+
+---
+# Template: Cache Failure
+# Tests system behavior when cache becomes unavailable
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-cache-partition
+  namespace: chaos-experiments
+  labels:
+    template: cache-failure
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      component: cache
+  mode: all
+  action: partition
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: application
+  duration: 5m
+
+---
+# Template: Service Degradation
+# Tests graceful degradation when services return errors
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: template-service-error
+  namespace: chaos-experiments
+  labels:
+    template: service-degradation
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: payment-service
+  mode: percentage
+  percent: 25
+  action: abort
+  target: service
+  abort:
+    code: 503
+  duration: 5m
+
+---
+# Template: High Load Recovery
+# Tests system recovery after high load conditions
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: template-cpu-stress
+  namespace: chaos-experiments
+  labels:
+    template: high-load-recovery
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: api
+  mode: one
+  action: cpu
+  stressors:
+    cpu:
+      workers: 4
+      load: 90
+  duration: 5m
+
+---
+# Template: Memory Pressure
+# Tests behavior under memory pressure
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: template-memory-pressure
+  namespace: chaos-experiments
+  labels:
+    template: memory-pressure
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: data-processor
+  mode: one
+  action: memory
+  stressors:
+    memory:
+      workers: 2
+      size: "2GB"
+  duration: 5m
+
+---
+# Template: Network Partition
+# Tests behavior during network partitions between services
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-service-partition
+  namespace: chaos-experiments
+  labels:
+    template: network-partition
+    severity: critical
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      zone: primary
+  mode: all
+  action: partition
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        zone: secondary
+  duration: 3m
+
+---
+# Template: Pod Restart
+# Tests recovery from pod restarts
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: template-pod-restart
+  namespace: chaos-experiments
+  labels:
+    template: pod-restart
+    severity: low
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: worker-service
+  mode: one
+  action: pod-kill
+  gracePeriod: 0
+  duration: 5m
+
+---
+# Template: Latency Cascade
+# Tests cascading latency effects across services
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-latency-cascade
+  namespace: chaos-experiments
+  labels:
+    template: latency-cascade
+    severity: high
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: backend
+  mode: all
+  action: delay
+  delay:
+    latency: 300ms
+    jitter: 100ms
+  direction: both
+  duration: 10m
+
+---
+# Template: Write Heavy Load
+# Tests behavior during write-heavy operations
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: template-write-latency
+  namespace: chaos-experiments
+  labels:
+    template: write-heavy
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      component: database
+  mode: all
+  action: delay
+  delay:
+    latency: 500ms
+  direction: both
+  duration: 5m
+
+---
+# Template: External Dependency Failure
+# Tests behavior when external services are unavailable
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: template-external-failure
+  namespace: chaos-experiments
+  labels:
+    template: external-dependency
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: gateway
+  mode: all
+  action: error
+  patterns:
+    - "*.external-api.com"
+
+---
+# Template: Time Skew
+# Tests behavior with time-related issues
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: template-time-skew
+  namespace: chaos-experiments
+  labels:
+    template: time-skew
+    severity: low
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: scheduler
+  mode: one
+  timeOffset: -60s
+  duration: 2m
+
+---
+# Template: IO Bottleneck
+# Tests behavior during disk I/O bottlenecks
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: template-io-bottleneck
+  namespace: chaos-experiments
+  labels:
+    template: io-bottleneck
+    severity: medium
+spec:
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: storage
+  mode: one
+  action: io
+  stressors:
+    io:
+      workers: 4
+
+---
+# Workflow: Multi-Stage Resilience Test
+# Combines multiple chaos experiments in sequence
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: template-multi-stage-test
+  namespace: chaos-experiments
+  labels:
+    template: multi-stage
+    severity: critical
+spec:
+  entry: serial
+  templates:
+    - name: serial
+      templateType: Serial
+      deadline: 30m
+    - name: network-delay
+      templateType: NetworkChaos
+      deadline: 5m
+      spec:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            tier: api
+        mode: all
+        action: delay
+        delay:
+          latency: 100ms
+    - name: cpu-stress
+      templateType: StressChaos
+      deadline: 5m
+      spec:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            tier: worker
+        mode: one
+        action: cpu
+        stressors:
+          cpu:
+            workers: 2
+            load: 50
+    - name: pod-kill
+      templateType: PodChaos
+      deadline: 5m
+      spec:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: worker
+        mode: one
+        action: pod-kill
+  serial:
+    - network-delay
+    - cpu-stress
+    - pod-kill
+
+---
+# Workflow: Hourly Health Check
+# Regular health check experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: template-hourly-health-check
+  namespace: chaos-experiments
+  labels:
+    template: health-check
+    severity: low
+  annotations:
+    description: "Hourly health check to verify system resilience"
+spec:
+  entry: parallel
+  templates:
+    - name: parallel
+      templateType: Parallel
+      deadline: 10m
+    - name: latency-check
+      templateType: NetworkChaos
+      spec:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            tier: frontend
+        mode: percentage
+        percent: 10
+        action: delay
+        delay:
+          latency: 50ms
+        duration: 1m
+    - name: error-check
+      templateType: HTTPChaos
+      spec:
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            tier: backend
+        mode: percentage
+        percent: 5
+        action: abort
+        target: service
+        abort:
+          code: 500
+        duration: 1m
+  parallel:
+    - latency-check
+    - error-check

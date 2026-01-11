@@ -1,0 +1,152 @@
+# Kubernetes Authentication Configuration for Vault
+# This file configures Vault to authenticate using Kubernetes Service Accounts
+# Apply this in Vault using: vault write -f sys/auth/kubernetes/config
+
+# Enable Kubernetes authentication
+vault auth enable kubernetes
+
+# Configure Kubernetes authentication
+vault write auth/kubernetes/config \
+  kubernetes_host="https://kubernetes.default.svc" \
+  kubernetes_ca_cert="@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt" \
+  token_reviewer_jwt="@/var/run/secrets/token" \
+  issuer="kubernetes/serviceaccount"
+
+# Create policies for different environments
+# Development policy - read-only access to development secrets
+vault policy write neam-dev-readonly - <<EOF
+# Development secret paths - read only
+path "secret/dev/*" {
+  capabilities = ["read", "list"]
+}
+
+path "secret/database/dev/*" {
+  capabilities = ["read"]
+}
+
+# Deny write access to development secrets
+path "secret/dev/*" {
+  capabilities = ["deny"]
+}
+EOF
+
+# Staging policy - read access to staging secrets
+vault policy write neam-staging-readonly - <<EOF
+# Staging secret paths
+path "secret/staging/*" {
+  capabilities = ["read", "list"]
+}
+
+path "secret/database/staging/*" {
+  capabilities = ["read"]
+}
+
+# Allow rotation of specific secrets
+path "secret/staging/database/*" {
+  capabilities = ["read", "update"]
+}
+EOF
+
+# Production policy - read access with rotation capabilities
+vault policy write neam-production-read - <<EOF
+# Production secret paths - read only
+path "secret/production/*" {
+  capabilities = ["read", "list"]
+}
+
+path "secret/production/database/*" {
+  capabilities = ["read"]
+}
+
+path "secret/production/kafka/*" {
+  capabilities = ["read"]
+}
+
+path "secret/production/mongodb/*" {
+  capabilities = ["read"]
+}
+
+path "secret/production/elasticsearch/*" {
+  capabilities = ["read"]
+}
+
+path "secret/production/external/*" {
+  capabilities = ["read"]
+}
+
+path "secret/production/application/*" {
+  capabilities = ["read"]
+}
+
+# Allow secret rotation via automation
+path "secret/production/database/*" {
+  capabilities = ["read", "update"]
+}
+
+path "secret/production/kafka/*" {
+  capabilities = ["read", "update"]
+}
+
+# Deny all write access except rotation
+path "secret/production/*" {
+  capabilities = ["deny"]
+}
+EOF
+
+# Create Kubernetes roles for each environment
+
+# Development role
+vault write auth/kubernetes/role/neam-dev \
+  bound_service_account_names="neam-dev-sa" \
+  bound_service_account_namespaces="neam-dev" \
+  policies="neam-dev-readonly" \
+  ttl=1h
+
+# Staging role
+vault write auth/kubernetes/role/neam-staging \
+  bound_service_account_names="neam-staging-sa" \
+  bound_service_account_namespaces="neam-staging" \
+  policies="neam-staging-readonly" \
+  ttl=1h
+
+# Production role
+vault write auth/kubernetes/role/neam-production \
+  bound_service_account_names="neam-production-sa" \
+  bound_service_account_namespaces="neam-production" \
+  policies="neam-production-read" \
+  ttl=1h
+
+# Create dynamic database credentials (optional - for automatic rotation)
+# Enable database secrets engine
+vault secrets enable database
+
+# Configure PostgreSQL connection
+vault write database/config/neam-production \
+  plugin_name="postgresql-database-plugin" \
+  allowed_roles="neam-app" \
+  connection_url="postgresql://{{username}}:{{password}}@neam-prod-postgresql-primary.production:5432/neam_production?sslmode=require" \
+  username="vault_admin" \
+  password="vault_admin_password"
+
+# Create database role for application
+vault write database/roles/neam-app \
+  db_name="neam-production" \
+  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";" \
+  default_ttl="1h" \
+  max_ttl="24h"
+
+# Create dynamic Redis credentials (optional)
+vault secrets enable -path=aws aws
+
+# AWS secrets engine configuration
+vault write aws/config/root \
+  access_key="AWS_ACCESS_KEY_ID" \
+  secret_key="AWS_SECRET_ACCESS_KEY" \
+  region="us-east-1"
+
+# Create dynamic database credentials for AWS RDS (example)
+vault write aws/roles/neam-db-creds \
+  credential_type="db_credentials" \
+  db_name="neam-production" \
+  role_arn="arn:aws:iam::123456789:role/neam-vault-rds-role" \
+  ttl="1h"

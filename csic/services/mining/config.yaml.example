@@ -1,0 +1,83 @@
+# Mining Control Platform Configuration
+
+# Application Configuration
+app:
+  name: "mining-control-platform"
+  host: "0.0.0.0"
+  port: 8080
+  environment: "development"
+  debug: true
+
+# Database Configuration (PostgreSQL - shared instance with table prefix)
+database:
+  host: "postgres"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_platform"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+
+# Redis Configuration (for caching and rate limiting)
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "s:mining:"
+
+# Logging Configuration
+logging:
+  level: "debug"
+  format: "json"
+  output: "stdout"
+
+# Compliance Configuration
+compliance:
+  # Number of consecutive quota violations before automatic shutdown
+  violation_threshold: 3
+  # Grace period in seconds before enforcing shutdown
+  grace_period_seconds: 300
+  # Enable automatic quota enforcement
+  auto_enforce: true
+
+# Hashrate Monitoring Configuration
+monitoring:
+  # Sample interval for hashrate checks (seconds)
+  sample_interval: 60
+  # Data retention period for hashrate records (days)
+  retention_days: 90
+  # Maximum records per query
+  max_records_query: 10000
+
+# Remote Shutdown Configuration
+shutdown:
+  # Command acknowledgment timeout (seconds)
+  ack_timeout_seconds: 60
+  # Force kill timeout (seconds)
+  force_kill_timeout_seconds: 30
+  # Maximum pending commands per operation
+  max_pending_commands: 10
+
+# Quota Configuration
+quota:
+  # Default quota type if not specified
+  default_type: "FIXED"
+  # Default max hashrate in TH/s if not set
+  default_max_hashrate: 100.0
+  # Quota validation buffer percentage
+  buffer_percentage: 5.0
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+
+# Health Check Configuration
+health:
+  enabled: true
+  path: "/health"
+  interval: 30

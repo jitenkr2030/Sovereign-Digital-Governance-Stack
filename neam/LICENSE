@@ -1,0 +1,55 @@
+# Sovereign Use License for NEAM — National Economic Activity Monitor
+
+## Preamble
+
+NEAM is designated as strategic national infrastructure intended for use by sovereign governments, central banks, state administrations, and authorized government agencies. This license establishes the terms and conditions for deployment, modification, and operation of the NEAM platform.
+
+## Grant of Rights
+
+Permission is hereby granted, free of charge, to any government entity, central bank, state administration, or authorized government agency (hereinafter "Licensee") to deploy, operate, modify, and maintain the NEAM platform for purposes of national economic monitoring, intelligence gathering, policy execution, and evidence-based governance, subject to the following conditions:
+
+The Licensee may deploy NEAM on infrastructure owned, operated, or contracted by the Licensee, including on-premises data centers, private cloud environments, government cloud platforms, or air-gapped systems as required by national security considerations.
+
+The Licensee may modify NEAM source code to adapt the platform to local requirements, integrate with national systems, comply with domestic regulations, and implement security enhancements appropriate to the threat landscape.
+
+The Licensee may commission third-party contractors to provide deployment, integration, maintenance, and support services, provided such contractors operate under binding agreements that preserve confidentiality, security, and sovereignty requirements.
+
+## Conditions and Restrictions
+
+The rights granted under this license are subject to the following conditions:
+
+**Sovereignty Requirement**: NEAM shall not be deployed on infrastructure subject to foreign jurisdiction, foreign cloud services, or foreign data processing unless explicitly authorized by appropriate national security authorities and with documented risk assessment and mitigation measures.
+
+**Data Sovereignty**: All economic data processed by NEAM shall remain under the sovereignty of the deploying nation-state. Cross-border data transfer requires explicit authorization from relevant data protection and national security authorities.
+
+**No Public SaaS Dependency**: NEAM shall not depend on public Software-as-a-Service offerings for core functions, sensitive data processing, or critical infrastructure components. Dependencies on external services must be documented, risk-assessed, and approved by appropriate authorities.
+
+**Audit and Accountability**: Deployments must maintain comprehensive audit trails in accordance with national requirements. Audit records must be preserved for periods specified by law and must be tamper-evident or tamper-proof.
+
+**Security Standards**: Deployments must implement security controls appropriate to the sensitivity of the data processed, including encryption at rest and in transit, access control, intrusion detection, and incident response capabilities.
+
+**No Consumer Surveillance**: NEAM shall not be used for individual-level surveillance, consumer data harvesting, or purposes unrelated to national economic monitoring and policy execution. Data minimization principles must be applied to all processing activities.
+
+**Derivative Works**: Modified versions of NEAM that are distributed or made available to other entities must retain this license and the sovereignty requirements herein.
+
+## Disclaimer of Warranty
+
+NEAM IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR UNINTERRUPTED OPERATION.
+
+The developers and contributors to NEAM MAKE NO REPRESENTATIONS OR WARRANTIES REGARDING THE SUITABILITY OF THE PLATFORM FOR SPECIFIC USE CASES, THE ACCURACY OF ECONOMIC PREDICTIONS OR ANALYSES, OR THE LEGALITY OF DEPLOYMENT IN ANY JURISDICTION.
+
+## Limitation of Liability
+
+IN NO EVENT SHALL THE DEVELOPERS, CONTRIBUTORS, OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, IN CONNECTION WITH NEAM OR THE USE OR OTHER DEALINGS IN NEAM.
+
+## Governing Law
+
+This license shall be governed by and construed in accordance with international principles of software licensing, respecting national sovereignty and data protection requirements.
+
+## Adoption and Authorization
+
+Government entities wishing to deploy NEAM are encouraged to formally adopt the platform through appropriate administrative or legislative processes. Formal adoption enables access to classified security guidance, classified threat intelligence, and coordinated incident response support.
+
+---
+
+**This license ensures that NEAM remains a tool for sovereign governance, accountable to citizens through their elected representatives and protected from commercial exploitation or foreign influence.**

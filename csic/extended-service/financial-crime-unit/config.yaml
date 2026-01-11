@@ -1,0 +1,186 @@
+# Financial Crime Unit Service Configuration
+
+# Application Settings
+app:
+  name: "financial-crime-unit-service"
+  host: "0.0.0.0"
+  port: 8087
+  environment: "production"
+  log_level: "info"
+
+# Database Configuration
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "csic_platform"
+  schema: "financial_crime"
+  max_open_conns: 100
+  max_idle_conns: 25
+  conn_max_lifetime: "5m"
+
+# Redis Configuration
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "csic:fc:"
+  pool_size: 50
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "fcu-service-group"
+  topics:
+    alerts: "csic.fc.alerts"
+    sars: "csic.fc.sars"
+    identity_updates: "csic.identity.updates"
+    transactions: "csic.ledger.transactions"
+    reports: "csic.fc.reports"
+
+# Financial Crime Detection Settings
+detection:
+  # Risk score thresholds
+  thresholds:
+    high_risk: 85
+    medium_risk: 60
+    low_risk: 30
+    critical_alert_score: 90
+  
+  # Transaction monitoring rules
+  transaction:
+    velocity_window: "1h"
+    max_transactions_per_window: 100
+    max_amount_per_window: 1000000
+    structuring_threshold: 9999
+    round_amount_threshold: 10000
+  
+  # Geographic risk settings
+  geographic:
+    impossible_travel_window: "2h"
+    high_risk_countries:
+      - "XX"
+      - "YY"
+    sanctioned_countries:
+      - "ZZ"
+  
+  # Velocity limits
+  velocity:
+    daily_transaction_limit: 50000
+    hourly_transaction_limit: 10000
+    max_recipients_per_day: 50
+
+# Sanctions and PEP Screening
+sanctions:
+  enabled: true
+  fuzzy_match_threshold: 0.85
+  pep_check_enabled: true
+  sanction_list_update_interval: "24h"
+  watchlist_refresh_interval: "1h"
+
+# Case Management Settings
+case_management:
+  auto_create_cases_above_score: 75
+  default_assignee: "auto"
+  workflow:
+    - state: "NEW"
+      next_states: ["ASSIGNED", "DISMISSED"]
+    - state: "ASSIGNED"
+      next_states: ["INVESTIGATING", "DISMISSED"]
+    - state: "INVESTIGATING"
+      next_states: ["SAR_FILED", "DISMISSED", "escalated"]
+    - state: "SAR_FILED"
+      next_states: ["CLOSED"]
+    - state: "DISMISSED"
+      next_states: ["CLOSED"]
+    - state: "CLOSED"
+      next_states: []
+  escalation_timeout: "72h"
+
+# SAR (Suspicious Activity Report) Settings
+sar:
+  enabled: true
+  template_format: "xml"
+  regulatory_body: "FINCEN"
+  auto_generate_threshold: 95
+  mandatory_fields:
+    - "subject_id"
+    - "transaction_details"
+    - "narrative"
+    - "filing_institution"
+  filing_deadline_hours: 30
+
+# Network Analysis Settings
+network_analysis:
+  enabled: true
+  max_hops: 3
+  analysis_timeout: "30s"
+  high_risk_patterns:
+    - "circular_transactions"
+    - "fan_in"
+    - "fan_out"
+    - "layering"
+
+# Risk Scoring Configuration
+risk_scoring:
+  base_score: 0
+  factors:
+    transaction_amount: 0.3
+    velocity_score: 0.2
+    geographic_risk: 0.15
+    entity_risk: 0.25
+    behavioral_pattern: 0.1
+  weights:
+    kyc_level: 0.2
+    account_age: 0.1
+    transaction_history: 0.3
+    blacklist_hit: 0.4
+
+# Privacy and Compliance
+privacy:
+  data_retention: "7y"
+  pii_encryption: true
+  gdpr_compliance: true
+  audit_log_retention: "10y"
+  sar_retention: "10y"
+
+# API Rate Limiting
+rate_limit:
+  enabled: true
+  requests_per_minute: 1000
+  burst_size: 200
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+  tracing:
+    enabled: true
+    sample_rate: 1.0
+  logging:
+    format: "json"
+    pii_masking: true
+
+# Security Settings
+security:
+  tls:
+    enabled: true
+    cert_file: "/etc/csic/certs/server.crt"
+    key_file: "/etc/csic/certs/server.key"
+  mtls:
+    enabled: true
+    ca_file: "/etc/csic/certs/ca.crt"
+  api_keys:
+    enabled: true
+    header_name: "X-API-Key"
+
+# Health Check
+health:
+  endpoint: "/health"
+  readiness_endpoint: "/ready"
+  liveness_endpoint: "/live"
+  dependency_timeout: "5s"

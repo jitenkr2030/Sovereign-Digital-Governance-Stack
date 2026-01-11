@@ -1,0 +1,123 @@
+# Defense Telemetry Service Configuration
+# Port: 8089 | Schema: defense | Redis Prefix: csic:defense:
+
+app:
+  host: "0.0.0.0"
+  port: 8089
+  name: "defense-telemetry-service"
+  environment: "development"
+
+# PostgreSQL Configuration (shared instance + table prefix isolation)
+database:
+  host: "10.112.2.4"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  name: "backend_shared"
+  table_prefix: "sess_8ab84f7d_defense_"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+# Redis Configuration (key prefix isolation)
+redis:
+  host: "10.112.2.4"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "sess:8ab84f7d:defense:"
+  pool_size: 10
+
+# Kafka Configuration for telemetry events
+kafka:
+  brokers:
+    - "10.112.2.4:9092"
+  consumer_group: "sess_8ab84f7d_defense_consumer"
+  topics:
+    telemetry_raw: "sess_8ab84f7d_defense_telemetry_raw"
+    threat_alerts: "sess_8ab84f7d_defense_threat_alerts"
+    maintenance_alerts: "sess_8ab84f7d_defense_maintenance"
+
+# Telemetry Configuration
+telemetry:
+  # Batch processing settings
+  batch_size: 100
+  batch_timeout: 5s
+  # Deduplication settings
+  dedup_window: 5s
+  dedup_cache_ttl: 10s
+  # Processing settings
+  max_processing_time: 30s
+  worker_count: 4
+
+# Equipment Status Thresholds
+equipment:
+  # Critical thresholds for equipment health
+  hull_integrity_warning: 70.0
+  hull_integrity_critical: 50.0
+  fuel_level_warning: 20.0
+  fuel_level_critical: 10.0
+  ammunition_warning: 25.0
+  ammunition_critical: 10.0
+  # Velocity thresholds (m/s)
+  max_velocity: 500.0
+  min_velocity: 0.0
+
+# Threat Detection Configuration
+threats:
+  # Severity thresholds
+  high_severity_threshold: 3
+  critical_severity_threshold: 4
+  # Alert cooldowns
+  alert_cooldown: 60s
+  # Auto-escalation
+  auto_escalate: true
+  escalation_delay: 300s
+
+# Maintenance Prediction Configuration
+maintenance:
+  # Health score thresholds
+  healthy_threshold: 85.0
+  warning_threshold: 70.0
+  critical_threshold: 50.0
+  # Prediction settings
+  prediction_horizon: 720h  # 30 days
+  trend_window: 24h
+  # Component health tracking
+  components:
+    - engine
+    - hull
+    - weapons
+    - communications
+    - navigation
+    - power_systems
+
+# Deployment Optimization Configuration
+deployment:
+  # Zone definitions for strategic positioning
+  zones:
+    - id: "alpha"
+      name: "Alpha Zone"
+      priority: 1
+    - id: "bravo"
+      name: "Bravo Zone"
+      priority: 2
+    - id: "charlie"
+      name: "Charlie Zone"
+      priority: 3
+  # Optimization parameters
+  max_distance_from_base: 100.0  # km
+  optimal_coverage_radius: 25.0   # km
+  overlap_tolerance: 0.2          # 20% overlap allowed
+
+# Prometheus Metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+  port: 9090
+
+# Logging
+logging:
+  level: "info"
+  format: "json"

@@ -1,0 +1,529 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-monitoring-config
+  namespace: registry
+  labels:
+    app: local-registry
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'local-registry'
+        static_configs:
+          - targets: ['local-registry:5001']
+        metrics_path: /metrics
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: local-registry-monitor
+  namespace: monitoring
+  labels:
+    app: local-registry
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: local-registry
+  namespaceSelector:
+    matchNames:
+      - registry
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: local-registry-alerts
+  namespace: monitoring
+  labels:
+    app: local-registry
+    release: prometheus
+spec:
+  groups:
+    - name: local-registry
+      rules:
+        - alert: RegistryDown
+          expr: up{job="local-registry"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Local registry is down"
+            description: "The local container registry has been unreachable for more than 1 minute."
+        
+        - alert: RegistryHighErrorRate
+          expr: |
+            rate(http_requests_total{job="local-registry",status=~"5.."}[5m]) /
+            rate(http_requests_total{job="local-registry"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High error rate on local registry"
+            description: "More than 10% of requests to the local registry have failed in the last 5 minutes."
+        
+        - alert: RegistryHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              rate(http_request_duration_seconds_bucket{job="local-registry"}[5m])
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High latency on local registry"
+            description: "95th percentile latency on the local registry exceeds 5 seconds."
+        
+        - alert: RegistryStorageHigh
+          expr: |
+            (1 - (pv_usage_bytes / pv_capacity_bytes)) < 0.1
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Registry storage is running low"
+            description: "Less than 10% of storage remains for the local registry."
+        
+        - alert: RegistrySyncFailed
+          expr: |
+            increase(registry_sync_failures_total[1h]) > 0
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Registry image sync failures"
+            description: "There have been failures syncing images to the local registry in the last hour."
+        
+        - alert: RegistryImageCountHigh
+          expr: |
+            count(container_blobs{job="local-registry"}) > 10000
+          for: 1h
+          labels:
+            severity: info
+            team: platform
+          annotations:
+            summary: "High image count in registry"
+            description: "The local registry contains more than 10,000 images."
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  registry-overview.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "panels": [],
+          "title": "Registry Health",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "green", "value": 1 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "up{job=\"local-registry\"}",
+              "legendFormat": "Registry Status",
+              "refId": "A"
+            }
+          ],
+          "title": "Registry Availability",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 80 },
+                  { "color": "red", "value": 90 }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "(1 - (pv_usage_bytes{persistentvolumeclaim=\"registry-pvc\"} / pv_capacity_bytes{persistentvolumeclaim=\"registry-pvc\"})) * 100",
+              "legendFormat": "Storage Free",
+              "refId": "A"
+            }
+          ],
+          "title": "Storage Available",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+          "id": 4,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{job=\"local-registry\"}[5m])) by (method)",
+              "legendFormat": "{{method}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Request Rate by Method",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+          "id": 5,
+          "panels": [],
+          "title": "Performance",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+          "id": 6,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"local-registry\"}[5m]))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"local-registry\"}[5m]))",
+              "legendFormat": "p95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"local-registry\"}[5m]))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "title": "Request Latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+          "id": 7,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "rate(http_response_size_bytes{job=\"local-registry\"}[5m])",
+              "legendFormat": "{{handler}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Response Size",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+          "id": 8,
+          "panels": [],
+          "title": "Storage and Images",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+              },
+              "mappings": [],
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+          "id": 9,
+          "options": {
+            "legend": { "displayMode": "table", "placement": "right", "showLegend": true },
+            "pieType": "pie",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "pv_capacity_bytes{persistentvolumeclaim=\"registry-pvc\"}",
+              "legendFormat": "Capacity",
+              "refId": "A"
+            },
+            {
+              "expr": "pv_usage_bytes{persistentvolumeclaim=\"registry-pvc\"}",
+              "legendFormat": "Used",
+              "refId": "B"
+            }
+          ],
+          "title": "Storage Usage",
+          "type": "piechart"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{ "color": "green", "value": null }]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+          "id": 10,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "expr": "count(container_blobs{job=\"local-registry\"})",
+              "legendFormat": "Total Blobs",
+              "refId": "A"
+            },
+            {
+              "expr": "count(container_manifests{job=\"local-registry\"})",
+              "legendFormat": "Total Manifests",
+              "refId": "B"
+            }
+          ],
+          "title": "Registry Contents",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["registry", "container-registry", "air-gapped"],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Local Registry Overview",
+      "uid": "local-registry-overview",
+      "version": 1,
+      "weekStart": ""
+    }

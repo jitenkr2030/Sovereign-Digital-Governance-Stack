@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sdgs.local/signals/contracts/financial-risk.signal.json",
+  "title": "Financial Risk Signal Contract",
+  "description": "Contract for signals transmitted from CSIC to NEAM regarding financial sector risks",
+  "type": "object",
+  "properties": {
+    "signalId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this signal instance"
+    },
+    "signalType": {
+      "type": "string",
+      "enum": ["transaction-monitoring", "compliance-enforcement", "financial-stability"],
+      "description": "Category of financial risk signal"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the signal was generated"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "enum": ["csic-banking", "csic-payments", "csic-crypto", "csic-regulatory"]
+        },
+        "component": {
+          "type": "string",
+          "description": "Specific component that generated the signal"
+        }
+      },
+      "required": ["system"]
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["public", "internal", "sensitive", "restricted"],
+      "default": "sensitive"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "patternType": {
+          "type": "string",
+          "description": "Type of suspicious pattern detected"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Assessment of pattern severity"
+        },
+        "affectedEntities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityId": {
+                "type": "string",
+                "description": "Anonymized entity identifier"
+              },
+              "entityType": {
+                "type": "string",
+                "enum": ["individual", "organization", "account", "address"]
+              },
+              "riskScore": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": ["entityId", "entityType"]
+          }
+        },
+        "transactionDetails": {
+          "type": "object",
+          "properties": {
+            "totalVolume": {
+              "type": "number",
+              "description": "Total transaction volume in base currency"
+            },
+            "transactionCount": {
+              "type": "integer",
+              "description": "Number of transactions in pattern"
+            },
+            "timeWindow": {
+              "type": "string",
+              "description": "Time period of the pattern (e.g., '24h', '7d')"
+            },
+            "geographicSpread": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Countries involved in the pattern"
+            }
+          }
+        },
+        "complianceFlags": {
+          type: "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "aml-concern",
+              "sanctions-risk",
+              "fraud-indicator",
+              "tax-evasion",
+              "structuring",
+              "unusual-pattern"
+            ]
+          }
+        },
+        "recommendedActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "enhanced-monitoring",
+              "sar-filing",
+              "freeze-assets",
+              "law-enforcement-referral",
+              "regulatory-notification"
+            ]
+          }
+        },
+        "confidenceScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Analytical confidence in pattern detection"
+        },
+        "relatedSignals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "IDs of related signals for correlation"
+        }
+      },
+      "required": ["patternType", "severity"]
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "processingHints": {
+          "type": "object",
+          "properties": {
+            "priority": {
+              "type": "string",
+              "enum": ["routine", "priority", "urgent", "critical"]
+            },
+            "responseDeadline": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "requiredExpertise": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "generatorId": {
+              "type": "string"
+            },
+            "reviewerId": {
+              "type": "string"
+            },
+            "approvalTimestamp": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      },
+      "required": ["version"]
+    }
+  },
+  "required": ["signalId", "signalType", "timestamp", "source", "classification", "payload"]
+}

@@ -1,0 +1,430 @@
+# SPIRE Server Deployment - Zero-Trust Identity Plane
+# Namespace Configuration
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+# SPIRE Server Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: spire-system
+---
+# SPIRE Server ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server
+  namespace: spire-system
+data:
+  spire-server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      socket_path = "/tmp/spire-server/private/api.sock"
+      trust_domain = "neam-platform.gov"
+      log_level = "DEBUG"
+      default_svid_ttl = "1h"
+      ca_ttl = "24h"
+      certificate_issue_chain_sanity_limit = 6
+    }
+
+    plugins {
+      DataStore "sql" {
+        plugin_data {
+          database_type = "postgres"
+          connection_string = "${SPIRE_DB_CONNECTION}"
+          max_open_conn = 25
+          max_idle_conn = 5
+          conn_max_lifetime = "5m"
+        }
+      }
+
+      KeyManager "memory" {
+        plugin_data {
+          keys = [
+            {
+              kid = "spire-ca-key",
+              type = "rsa-2048",
+              signing_algorithm = "RS256",
+            }
+          ]
+        }
+      }
+
+      CredentialComposer "aws_iid" {
+        plugin_data {
+          # AWS-specific configuration for EC2 attestation
+        }
+      }
+
+      CredentialComposer "k8s_psat" {
+        plugin_data {
+          # Kubernetes Projected Service Account Token configuration
+          service_account_issuer = "kubernetes.default.svc"
+        }
+      }
+
+      Notifier "gcs_bundle" {
+        plugin_data {
+          bucket_name = "${SPIRE_BUNDLE_BUCKET}"
+        }
+      }
+
+      Notifier "k8sbundle" {
+        plugin_data {
+          namespace = "spire-system"
+          config_map = "spire-bundle"
+        }
+      }
+    }
+
+    health_checks {
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+    }
+
+    federation {
+      # Federation configuration for cross-cluster trust
+      bundle_endpoint {
+        bind_address = "0.0.0.0"
+        bind_port = "8443"
+        trust_domain = "neam-platform.gov"
+      }
+    }
+---
+# SPIRE Server Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spire-server
+  namespace: spire-system
+  labels:
+    app: spire-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: spire-server
+  template:
+    metadata:
+      labels:
+        app: spire-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: spire-server
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: spire-server
+          image: gcr.io/spiffe-io/spire-server:1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /run/spire/secrets/spire-server.conf
+          ports:
+            - containerPort: 8081
+              name: API
+            - containerPort: 8080
+              name: Health
+            - containerPort: 8443
+              name: Federation
+          volumeMounts:
+            - name: server-config
+              mountPath: /run/spire/secrets
+              readOnly: true
+            - name: spire-data
+              mountPath: /run/spire/data
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          env:
+            - name: SPIRE_DB_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: spire-db-credentials
+                  key: connection_string
+                  optional: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: server-config
+          configMap:
+            name: spire-server
+        - name: spire-data
+          persistentVolumeClaim:
+            claimName: spire-server-pvc
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: spire-server
+                topologyKey: kubernetes.io/hostname
+---
+# SPIRE Server Service (ClusterIP for internal API)
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: spire-system
+  labels:
+    app: spire-server
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 8081
+      targetPort: 8081
+    - name: health
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: spire-server
+---
+# SPIRE Server Service (NodePort for agent connections)
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server-nodeport
+  namespace: spire-system
+  labels:
+    app: spire-server
+spec:
+  type: NodePort
+  ports:
+    - name: api
+      port: 8081
+      targetPort: 8081
+      nodePort: 30081
+  selector:
+    app: spire-server
+---
+# SPIRE Server PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spire-server-pvc
+  namespace: spire-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+# SPIRE Bundle ConfigMap (for trust bundle distribution)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire-system
+  labels:
+    spire.io/cache: "true"
+data:
+  root.pem: |
+    # Trust bundle will be automatically populated by SPIRE server
+---
+# SPIRE Agent Bootstrap ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-bootstrap
+  namespace: spire-system
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/data"
+      log_level = "DEBUG"
+      trust_domain = "neam-platform.gov"
+      server_address = "spire-server.spire-system.svc"
+      server_port = "8081"
+      socket_path = "/run/spire/agent/private/api.sock"
+      trust_bundle_path = "/run/spire/secrets/tls/ca.crt"
+      advertised_address = "spire-server.spire-system.svc"
+    }
+
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "neam-platform"
+        }
+      }
+
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          enabled = true
+          max_workers = 10
+        }
+      }
+
+      WorkloadAttestor "docker" {
+        plugin_data {
+          enabled = false
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          directory = "/run/spire/data"
+        }
+      }
+
+      SecretManager "disk" {
+        plugin_data {
+          directory = "/run/spire/secrets"
+        }
+      }
+    }
+---
+# SPIRE Registration Entry for Workloads
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: neam-platform-workloads
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  podSelector:
+    matchLabels:
+      spiffe.io/workload: "true"
+  downstreamCluster: false
+---
+# SPIRE Registration Entry for Istio Sidecars
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: istio-sidecar
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  parentId: "spiffe://neam-platform.gov/ns/istio-system/sa/istio-ingressgateway-service-account"
+  dnsNamePatterns:
+    - "*.istio-system"
+    - "istio-ingressgateway"
+  podSelector:
+    matchLabels:
+      app: istio-ingressgateway
+---
+# SPIRE Registration Entry for API Gateway
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: api-gateway
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  podSelector:
+    matchLabels:
+      app: api-gateway
+---
+# SPIRE Registration Entry for Dashboard
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: dashboard
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  podSelector:
+    matchLabels:
+      app: dashboard
+---
+# RBAC for SPIRE Server
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server-cluster-role
+  namespace: spire-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server-cluster-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-system
+roleRef:
+  kind: ClusterRole
+  name: spire-server-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# SPIRE Admin Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-admin
+rules:
+  - apiGroups: ["spire.spiffe.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-admin-binding
+subjects:
+  - kind: User
+    name: admin
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: spire-admin
+  apiGroup: rbac.authorization.k8s.io

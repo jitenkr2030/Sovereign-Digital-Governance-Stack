@@ -1,0 +1,244 @@
+# Multi-Level Approval System Configuration
+# This file contains all configuration for the approval service
+
+# Application Configuration
+app:
+  name: "neam-approval-service"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  idle_timeout: 120s
+
+# Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  username: "postgres"
+  password: "${DB_PASSWORD}"
+  name: "neam_platform"
+  ssl_mode: "require"
+  max_connections: 25
+  connection_timeout: 10s
+
+# Redis Configuration (Caching & Sessions)
+redis:
+  host: "localhost"
+  port: 6379
+  password: "${REDIS_PASSWORD}"
+  db: 0
+  pool_size: 100
+  key_prefix: "approval:"
+
+# Temporal.io Configuration
+temporal:
+  host: "localhost"
+  port: 7233
+  namespace: "neam-production"
+  task_queue: "approval-task-queue"
+  max_concurrent_activities: 100
+  max_concurrent_workflows: 50
+  workflow_execution_timeout: 72h
+  activity_retry_max_attempts: 3
+  activity_retry_initial_interval: 1s
+  activity_retry_max_interval: 5m
+  activity_retry_backoff_coefficient: 2.0
+
+# Security Configuration
+security:
+  # RSA Key paths for cryptographic signing
+  private_key_path: "/etc/mlas/private.key"
+  public_key_path: "/etc/mlas/public.key"
+  key_bits: 2048
+  key_expiry: 365d
+  
+  # JWT Configuration
+  jwt:
+    secret: "${JWT_SECRET}"
+    expiry: 24h
+    refresh_expiry: 168h
+  
+  # Password Policy
+  password:
+    min_length: 12
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: true
+    max_age: 90d
+
+# Approval Policy Defaults
+approval:
+  # Default timeout for new requests (can be overridden per definition)
+  default_timeout_hours: 48
+  max_timeout_hours: 168  # 1 week
+  
+  # Default quorum settings
+  default_quorum_required: 2
+  default_total_approvers: 3
+  
+  # Delegation defaults
+  delegation:
+    max_duration: 168h  # 1 week
+    max_depth: 3        # Max delegation chain length
+    require_justification: true
+  
+  # Auto-expiration settings
+  auto_expire:
+    enabled: true
+    reminder_before: 4h
+    final_reminder: 1h
+
+# Notification Configuration
+notifications:
+  enabled: true
+  
+  # Channels configuration
+  channels:
+    email:
+      enabled: true
+      smtp_host: "smtp.example.com"
+      smtp_port: 587
+      from_address: "approvals@neam.example.com"
+    
+    slack:
+      enabled: true
+      webhook_url: "${SLACK_WEBHOOK_URL}"
+      default_channel: "#approvals"
+    
+    in_app:
+      enabled: true
+      retention_days: 30
+    
+    sms:
+      enabled: false
+      provider: "twilio"
+      account_sid: "${TWILIO_ACCOUNT_SID}"
+      auth_token: "${TWILIO_AUTH_TOKEN}"
+  
+  # Event triggers
+  triggers:
+    on_request_created: ["email", "in_app"]
+    on_approval_received: ["in_app"]
+    on_quorum_met: ["email", "slack", "in_app"]
+    on_request_rejected: ["email", "slack", "in_app"]
+    on_request_expired: ["email", "in_app"]
+    on_delegation_created: ["email"]
+    on_delegation_revoked: ["email"]
+
+# Logging Configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, text
+  output: "stdout"  # stdout, file
+  
+  # File logging (if output is file)
+  file:
+    path: "/var/log/neam-approval"
+    max_size: 100MB
+    max_age: 30d
+    max_backups: 10
+  
+  # Audit logging
+  audit:
+    enabled: true
+    level: "info"
+    include_request_body: true
+    include_response_body: false
+    sensitive_fields:
+      - "password"
+      - "token"
+      - "secret"
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  port: 9090
+  
+  # Custom metrics
+  custom:
+    - name: "approval_requests_total"
+      type: counter
+      labels: ["status", "priority", "category"]
+    - name: "approval_duration_seconds"
+      type: histogram
+      labels: ["status", "priority"]
+      buckets: [60, 300, 900, 3600, 7200, 43200, 86400]
+    - name: "quorum_achievement_rate"
+      type: gauge
+    - name: "delegation_usage_total"
+      type: counter
+      labels: ["direction"]
+
+# Health Check Configuration
+health:
+  enabled: true
+  endpoint: "/health"
+  readiness_endpoint: "/ready"
+  
+  # Dependency checks
+  checks:
+    database:
+      enabled: true
+      timeout: 5s
+    redis:
+      enabled: true
+      timeout: 2s
+    temporal:
+      enabled: true
+      timeout: 5s
+
+# CORS Configuration
+cors:
+  enabled: true
+  allowed_origins:
+    - "https://neam.example.com"
+    - "https://admin.neam.example.com"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "PATCH"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+    - "X-Request-ID"
+  max_age: 86400
+
+# Rate Limiting
+rate_limit:
+  enabled: true
+  
+  limits:
+    - endpoint: "/api/v1/approval-requests"
+      method: "POST"
+      requests_per_minute: 60
+    
+    - endpoint: "/api/v1/approval-requests/*/decide"
+      method: "POST"
+      requests_per_minute: 120
+    
+    - endpoint: "/api/v1/approvals/pending"
+      method: "GET"
+      requests_per_minute: 300
+    
+    - endpoint: "/api/v1/approval-requests/*/audit-trail"
+      method: "GET"
+      requests_per_minute: 100
+
+# Feature Flags
+features:
+  batch_approvals: true
+  delegation: true
+  auto_expiration: true
+  notifications: true
+  audit_trail: true
+  cryptographic_signing: true
+  human_in_the_loop: true

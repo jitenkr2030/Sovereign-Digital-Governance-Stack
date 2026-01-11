@@ -1,0 +1,60 @@
+# Prometheus Configuration for CSIC Reporting Service
+# This configuration defines the scraping targets and settings for metrics collection.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'csic-development'
+    environment: 'development'
+    service: 'reporting-service'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# Load alerting and recording rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Self monitoring - Prometheus metrics
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # CSIC Reporting Service metrics
+  - job_name: 'csic-reporting-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['reporting-service:9090']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\\d+'
+        replacement: '${1}'
+
+  # PostgreSQL metrics (via postgres_exporter)
+  - job_name: 'csic-postgresql-reporting'
+    static_configs:
+      - targets: ['reporting-db:9187']
+    metrics_path: /metrics
+
+  # Redis metrics (via redis_exporter)
+  - job_name: 'csic-redis-reporting'
+    static_configs:
+      - targets: ['reporting-cache:9121']
+    metrics_path: /metrics
+
+  # Kafka metrics (via kafka_exporter)
+  - job_name: 'csic-kafka-reporting'
+    static_configs:
+      - targets: ['kafka:9308']
+    metrics_path: /metrics

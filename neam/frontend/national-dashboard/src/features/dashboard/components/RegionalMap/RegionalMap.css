@@ -1,0 +1,212 @@
+.regional-map-container {
+  width: 100%;
+}
+
+.regional-map {
+  position: relative;
+  overflow: hidden;
+}
+
+.regional-map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.regional-map-svg {
+  display: block;
+}
+
+/* Legend */
+.map-legend {
+  position: absolute;
+  bottom: var(--spacing-md);
+  left: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  z-index: 10;
+}
+
+.map-legend-title {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.map-legend-scale {
+  margin-bottom: var(--spacing-sm);
+}
+
+.map-legend-gradient {
+  width: 100px;
+  height: 12px;
+  background: linear-gradient(to right, 
+    var(--color-success), 
+    var(--color-warning), 
+    var(--color-danger)
+  );
+  border-radius: 2px;
+}
+
+.map-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--spacing-xs);
+  color: var(--color-text-muted);
+}
+
+.map-legend-items {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--border-light);
+}
+
+.map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.map-legend-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Tooltip */
+.map-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  opacity: 0;
+  transition: opacity var(--transition-fast) var(--ease);
+  z-index: var(--z-tooltip);
+  box-shadow: var(--shadow-lg);
+}
+
+.map-tooltip-title {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.map-tooltip-value {
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.map-tooltip-status {
+  display: inline-block;
+  margin-top: var(--spacing-xs);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  text-transform: capitalize;
+}
+
+.map-tooltip-status.status-healthy {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.map-tooltip-status.status-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.map-tooltip-status.status-critical {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* Region Info Panel */
+.map-region-info {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: var(--spacing-md);
+  min-width: 150px;
+  z-index: 10;
+}
+
+.map-region-info h4 {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.map-info-value {
+  font-size: var(--font-size-lg);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.map-info-status {
+  display: inline-block;
+  margin-top: var(--spacing-xs);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: capitalize;
+}
+
+.map-info-status.status-healthy {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.map-info-status.status-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.map-info-status.status-critical {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* Region Styling */
+.region {
+  transition: fill var(--transition-fast) var(--ease);
+}
+
+.region:hover {
+  opacity: 0.85;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .map-legend {
+    bottom: auto;
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+  }
+
+  .map-legend-items {
+    display: none;
+  }
+
+  .map-region-info {
+    top: auto;
+    bottom: var(--spacing-md);
+    right: var(--spacing-md);
+  }
+}

@@ -1,0 +1,398 @@
+# NEAM Platform Production Environment Values
+# This file contains values for production environment deployments
+# WARNING: Review all values before production deployment
+# All settings are optimized for high availability and performance
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+    environment: production
+    version: "v1.0.0"
+  imagePullSecrets: []
+
+# Image configuration - use production images with specific tags
+image:
+  repository: neam-platform
+  pullPolicy: Always
+  tag: "v1.0.0"
+  pullSecrets: []
+
+# Replica configuration - high availability
+replicaCount: 3
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: "neam-production-sa"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-production-role"
+    eks.amazonaws.com/assume-role-permissions: "true"
+
+# Pod configuration for production
+podAnnotations:
+  checksum/config: "prod-config"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  sidecar.istio.io/inject: "true"
+  cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+# Environment variables for production
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.labels['app.kubernetes.io/name']
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector.production:4317"
+  - name: OTEL_METRICS_EXPORTER
+    value: "otlp"
+  - name: OTEL_TRACES_EXPORTER
+    value: "otlp"
+
+# Feature flags for production - stable features only
+featureFlags:
+  advancedAnalytics: true
+  aiPrediction: true
+  realTimeProcessing: true
+  customRules: true
+  auditLogging: true
+  debugMode: false
+  performanceMonitoring: true
+  betaFeatures: false
+
+# Resource configuration - high availability
+resources:
+  limits:
+    cpu: "4"
+    memory: 4Gi
+  requests:
+    cpu: "2"
+    memory: 2Gi
+
+# Enable autoscaling for production with aggressive settings
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+
+# Production ingress configuration
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Content-Security-Policy: default-src 'self'";
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+      }
+
+# Enable and configure pod disruption budgets for production
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Health probes - comprehensive for production
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: true
+  path: /health/startup
+  port: 8080
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 30
+  failureThreshold: 30
+
+# Database configuration - production databases with high availability
+database:
+  postgresql:
+    host: "neam-prod-postgresql-primary.production"
+    port: 5432
+    username: "neam_production"
+    name: "neam_production"
+    sslMode: "verify-full"
+    pool:
+      maxOpenConns: 25
+      maxIdleConns: 5
+      connMaxLifetime: 30m
+    ha:
+      enabled: true
+      replicas: 2
+      synchronousCommit: "on"
+  redis:
+    host: "neam-prod-redis-master.production"
+    port: 6379
+    password: ""
+    db: 0
+    keyPrefix: "prod:"
+    pool:
+      maxIdle: 20
+      maxActive: 50
+    cluster:
+      enabled: true
+      nodes: 6
+
+# Kafka configuration - production Kafka cluster
+kafka:
+  brokers:
+    - "neam-prod-kafka-0.production:9092"
+    - "neam-prod-kafka-1.production:9092"
+    - "neam-prod-kafka-2.production:9092"
+    - "neam-prod-kafka-3.production:9092"
+    - "neam-prod-kafka-4.production:9092"
+    - "neam-prod-kafka-5.production:9092"
+  consumerGroup: "neam-production"
+  autoOffsetReset: "latest"
+  security:
+    enabled: true
+    sasl:
+      enabled: true
+      mechanism: "SCRAM-SHA-512"
+
+# MongoDB configuration - production MongoDB replica set
+mongodb:
+  host: "neam-prod-mongodb-0.production"
+  port: 27017
+  username: "neam_production"
+  password: ""
+  database: "neam_production"
+  authSource: "admin"
+  replicaSet: "rs0"
+  ssl:
+    enabled: true
+    certificateAuthority: "/certs/mongodb-ca.crt"
+
+# Elasticsearch configuration - production Elasticsearch cluster
+elasticsearch:
+  host: "neam-prod-elasticsearch-master.production"
+  port: 9200
+  index: "neam-production"
+  ssl:
+    enabled: true
+    verificationMode: "certificate"
+  security:
+    enabled: true
+    apiKey:
+      enabled: true
+
+# External services - production endpoints
+externalServices:
+  schemaRegistry:
+    url: "http://neam-prod-schema-registry.production:8081"
+    timeout: 5s
+  dataQualityService:
+    url: "http://neam-prod-data-quality.production:8082"
+    timeout: 10s
+  notificationService:
+    url: "http://neam-prod-notification.production:8083"
+    timeout: 5s
+
+# Vault configuration - production vault
+vault:
+  enabled: true
+  address: "https://vault.neam.io"
+  role: "neam-production"
+  authPath: "kubernetes"
+  secretsPath: "secret/production"
+  tls:
+    enabled: true
+    skipVerify: false
+
+# CSI Secret Provider - enabled for production with full configuration
+csiSecretProvider:
+  enabled: true
+  providerPath: "secrets-store.csi.k8s.io"
+  providerName: "vault"
+  parameters:
+    roleName: "neam-production"
+    vaultAddress: "https://vault.neam.io"
+    vaultSkipVerify: "false"
+    vaultTLSClientCert: "/certs/vault/client.crt"
+    vaultTLSClientKey: "/certs/vault/client.key"
+    vaultCACert: "/certs/vault/ca.crt"
+    secrets: |
+      - secretPath: "secret/production/database/postgresql"
+        data:
+          - objectName: "username"
+            key: "username"
+          - objectName: "password"
+            key: "password"
+          - objectName: "connection_string"
+            key: "connection_string"
+      - secretPath: "secret/production/database/redis"
+        data:
+          - objectName: "password"
+            key: "password"
+          - objectName: "connection_string"
+            key: "connection_string"
+      - secretPath: "secret/production/kafka"
+        data:
+          - objectName: "sasl_username"
+            key: "username"
+          - objectName: "sasl_password"
+            key: "password"
+      - secretPath: "secret/production/mongodb"
+        data:
+          - objectName: "password"
+            key: "password"
+          - objectName: "connection_string"
+            key: "connection_string"
+      - secretPath: "secret/production/external"
+        data:
+          - objectName: "api_keys"
+            key: "api_keys"
+    secretRefreshRate: "120s"
+    secretGracePeriod: "30s"
+
+# Storage configuration - production storage
+persistentVolumeClaim:
+  create: false
+
+# Topology spread constraints for production
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/managed-by: Helm
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/managed-by: Helm
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - sensing
+        topologyKey: kubernetes.io/hostname
+
+tolerations: []
+terminationGracePeriodSeconds: 60
+
+# Priority class for production
+priorityClassName: high-priority
+
+# DNS configuration for production
+dnsPolicy: ClusterFirst
+dnsConfig:
+  nameservers:
+    - 8.8.8.8
+    - 8.8.4.4
+  searches:
+    - default.svc.cluster.local
+    - svc.cluster.local
+
+# Command override
+command: []
+args: []
+
+# Volume mounts
+volumeMounts: []
+volumes: []
+
+# Lifecycle hooks
+lifecycle: {}
+initContainers: []
+
+# Additional security settings
+hostAliases: []
+schedulerName: ""

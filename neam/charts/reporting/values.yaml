@@ -1,0 +1,238 @@
+# Default values for reporting service
+# This file uses the shared library chart for common configurations
+
+global:
+  labels:
+    app.kubernetes.io/part-of: neam-platform
+
+# Override chart name
+nameOverride: "reporting"
+fullnameOverride: "neam-reporting"
+
+# Replica configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: neam-platform/reporting
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "neam-reporting"
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/neam-reporting-role"
+
+# Deployment configuration
+deployment:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+# Pod configuration
+podAnnotations:
+  checksum/config: "stu901"
+  sidecar.istio.io/inject: "true"
+
+podSecurityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container configuration
+containerPorts:
+  http: 8080
+  grpc: 9090
+  metrics: 9090
+
+env:
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_SERVICE_NAME
+    value: "neam-reporting"
+
+envFrom:
+  - secretRef:
+      name: reporting-secrets
+  - configMapRef:
+      name: reporting-config
+
+command:
+  - "/reporting"
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/reporting
+    readOnly: true
+  - name: reports
+    mountPath: /reports
+  - name: templates
+    mountPath: /templates
+
+volumes:
+  - name: config
+    configMap:
+      name: reporting-config
+  - name: reports
+    persistentVolumeClaim:
+      claimName: reporting-reports
+  - name: templates
+    configMap:
+      name: reporting-templates
+
+# Security context
+containerSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health probes
+livenessProbe:
+  enabled: true
+  path: /health/live
+  port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+# Resources
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Networking
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+
+serviceHeadless:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: reports.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - reports.example.com
+      secretName: reporting-tls
+
+# Configuration
+configmap:
+  create: true
+  data:
+    config.yaml: |
+      server:
+        host: "0.0.0.0"
+        port: 8080
+        grpc_port: 9090
+      
+      storage:
+        s3_bucket: neam-reports
+        region: us-east-1
+      
+      generation:
+        timeout: 300s
+        max_concurrent: 10
+        formats:
+          - pdf
+          - xlsx
+          - csv
+      
+      scheduling:
+        enabled: true
+        default_timezone: UTC
+      
+      database:
+        url: postgresql://postgres:5432/neam
+        max_open_conns: 10
+        max_idle_conns: 5
+
+configmapFromFile:
+  create: true
+  data:
+    templates/daily.yaml: |
+      name: Daily Summary
+      schedule: "0 8 * * *"
+      format: pdf
+      query: daily_summary.sql
+
+secret:
+  create: false
+
+tlsSecret:
+  create: false
+
+# Storage
+persistentVolumeClaim:
+  create: true
+  size: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+
+# Advanced configuration
+nodeSelector:
+  node-type: general
+
+affinity: {}
+
+tolerations: []
+
+terminationGracePeriodSeconds: 30
+
+priorityClassName: medium-priority
+
+# Autoscaling
+autoscaling:
+  enabled: false
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Image pull secrets
+imagePullSecrets:
+  - name: registry-credentials

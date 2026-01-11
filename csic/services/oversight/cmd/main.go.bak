@@ -1,0 +1,345 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/csic/oversight/internal/adapters/analytics"
+	"github.com/csic/oversight/internal/adapters/handlers"
+	"github.com/csic/oversight/internal/adapters/messaging"
+	"github.com/csic/oversight/internal/adapters/storage"
+	"github.com/csic/oversight/internal/config"
+	"github.com/csic/oversight/internal/core/ports"
+	"github.com/csic/oversight/internal/core/services"
+
+	grpchandlers "github.com/csic/oversight/internal/adapters/handlers/grpc"
+	httphandlers "github.com/csic/oversight/internal/adapters/handlers/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+)
+
+func main() {
+	// Initialize logger
+	logger, err := zap.NewProduction()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Fatal("Failed to load configuration", zap.Error(err))
+	}
+
+	logger.Info("Configuration loaded successfully",
+		zap.String("environment", cfg.Environment),
+		zap.Strings("kafka_brokers", cfg.Kafka.Brokers),
+		zap.String("postgres_url", cfg.Postgres.URL),
+	)
+
+	// Initialize context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Initialize PostgreSQL connection pool
+	pgPool, err := initPostgres(ctx, cfg.Postgres, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize PostgreSQL", zap.Error(err))
+	}
+	defer pgPool.Close()
+
+	// Initialize Redis client
+	redisClient, err := initRedis(ctx, cfg.Redis, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize Redis", zap.Error(err))
+	}
+	defer redisClient.Close()
+
+	// Initialize Kafka connection
+	kafkaConn, err := initKafkaConnection(ctx, cfg.Kafka, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize Kafka", zap.Error(err))
+	}
+	defer kafkaConn.Close()
+
+	// Initialize Kafka reader and writer
+	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:  cfg.Kafka.Brokers,
+		Topic:    cfg.Kafka.TradeTopic,
+		GroupID:  cfg.Kafka.ConsumerGroup,
+		MinBytes: 10e3, // 10KB
+		MaxBytes: 10e6, // 10MB
+		MaxWait:  time.Second,
+	})
+	defer kafkaReader.Close()
+
+	kafkaWriter := &kafka.Writer{
+		Addr:         kafka.TCP(cfg.Kafka.Brokers...),
+		Balancer:     &kafka.LeastBytes{},
+		BatchTimeout: 10 * time.Millisecond,
+		RequiredAcks: kafka.RequireAll,
+	}
+
+	// Initialize OpenSearch client
+	opensearchClient, err := analytics.NewOpenSearchClient(cfg.OpenSearch, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize OpenSearch", zap.Error(err))
+	}
+
+	// Initialize repository ports
+	alertRepo := storage.NewAlertRepository(pgPool, logger)
+	ruleRepo := storage.NewRuleRepository(pgPool, logger)
+	exchangeRepo := storage.NewExchangeRepository(pgPool, logger)
+	healthRepo := storage.NewHealthRepository(pgPool, logger)
+
+	// Initialize messaging ports
+	eventBus := messaging.NewKafkaEventBus(kafkaWriter, logger)
+	throttlePublisher := messaging.NewThrottleCommandPublisher(kafkaWriter, logger)
+
+	// Initialize analytics port
+	tradeAnalytics := analytics.NewTradeAnalyticsEngine(opensearchClient, logger)
+
+	// Initialize cache port
+	cachePort := initCachePort(redisClient, logger)
+
+	// Initialize core services
+	abuseDetector := services.NewAbuseDetectorService(ruleRepo, alertRepo, eventBus, logger)
+	healthScorer := services.NewHealthScorerService(healthRepo, exchangeRepo, throttlePublisher, cachePort, logger)
+	ingestionService := services.NewIngestionService(abuseDetector, healthScorer, tradeAnalytics, eventBus, logger)
+
+	// Initialize HTTP server
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(requestLoggerMiddleware(logger))
+
+	httpHandler := httphandlers.NewHTTPHandler(alertRepo, ruleRepo, healthScorer, exchangeRepo, logger)
+	httpHandler.RegisterRoutes(router)
+
+	httpServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.HTTPPort),
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Initialize gRPC server
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
+	grpcHandler := grpchandlers.NewGRPCHandler(healthScorer, abuseDetector, exchangeRepo, logger)
+	// Register services would go here
+
+	reflection.Register(grpcServer)
+
+	// Start services in goroutines
+	go func() {
+		logger.Info("Starting HTTP server", zap.Int("port", cfg.Server.HTTPPort))
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("HTTP server failed", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.GRPCPort))
+		if err != nil {
+			logger.Fatal("Failed to create gRPC listener", zap.Error(err))
+		}
+		logger.Info("Starting gRPC server", zap.Int("port", cfg.Server.GRPCPort))
+		if err := grpcServer.Serve(listener); err != nil {
+			logger.Fatal("gRPC server failed", zap.Error(err))
+		}
+	}()
+
+	// Start Kafka consumer
+	go startKafkaConsumer(ctx, kafkaReader, ingestionService, logger)
+
+	// Wait for shutdown signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	sig := <-sigChan
+	logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
+
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Shutdown HTTP server
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Shutdown gRPC server
+	grpcServer.GracefulStop()
+
+	// Shutdown Kafka consumer
+	cancel()
+
+	logger.Info("Server shutdown complete")
+}
+
+func initPostgres(ctx context.Context, cfg config.PostgresConfig, logger *zap.Logger) (*pgxpool.Pool, error) {
+	poolConfig, err := pgxpool.ParseConfig(cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse postgres config: %w", err)
+	}
+
+	poolConfig.MaxConns = int32(cfg.MaxConnections)
+	poolConfig.MinConns = int32(cfg.MinConnections)
+	poolConfig.MaxConnLifetime = time.Duration(cfg.MaxConnLifetimeMinutes) * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ping postgres: %w", err)
+	}
+
+	logger.Info("PostgreSQL connection established",
+		zap.String("database", cfg.Database),
+		zap.Int("max_connections", cfg.MaxConnections),
+	)
+
+	return pool, nil
+}
+
+func initRedis(ctx context.Context, cfg config.RedisConfig, logger *zap.Logger) (*redis.Client, error) {
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.Addr,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+		PoolSize: cfg.PoolSize,
+	})
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to ping redis: %w", err)
+	}
+
+	logger.Info("Redis connection established",
+		zap.String("addr", cfg.Addr),
+		zap.Int("db", cfg.DB),
+	)
+
+	return client, nil
+}
+
+func initKafkaConnection(ctx context.Context, cfg config.KafkaConfig, logger *zap.Logger) (*kafka.Conn, error) {
+	conn, err := kafka.DialContext(ctx, "tcp", cfg.Brokers[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to kafka: %w", err)
+	}
+
+	logger.Info("Kafka connection established", zap.String("broker", cfg.Brokers[0]))
+	return conn, nil
+}
+
+func initCachePort(client *redis.Client, logger *zap.Logger) ports.CachePort {
+	return &RedisCacheAdapter{
+		client: client,
+		logger: logger,
+	}
+}
+
+func startKafkaConsumer(ctx context.Context, reader *kafka.Reader, service ports.OversightService, logger *zap.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Kafka consumer shutting down")
+			return
+		default:
+			msg, err := reader.ReadMessage(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				logger.Error("Failed to read message", zap.Error(err))
+				continue
+			}
+
+			// Process trade event
+			if err := service.ProcessTradeStream(ctx, msg); err != nil {
+				logger.Error("Failed to process trade stream",
+					zap.Error(err),
+					zap.ByteString("topic", msg.Topic),
+					zap.Int("partition", msg.Partition),
+					zap.Int64("offset", msg.Offset),
+				)
+			}
+		}
+	}
+}
+
+func requestLoggerMiddleware(logger *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
+
+		c.Next()
+
+		logger.Info("HTTP request completed",
+			zap.Int("status", c.Writer.Status()),
+			zap.String("method", c.Request.Method),
+			zap.String("path", path),
+			zap.String("query", query),
+			zap.Duration("latency", time.Since(start)),
+			zap.String("client_ip", c.ClientIP()),
+		)
+	}
+}
+
+// RedisCacheAdapter implements CachePort interface
+type RedisCacheAdapter struct {
+	client *redis.Client
+	logger *zap.Logger
+}
+
+func (r *RedisCacheAdapter) Get(ctx context.Context, key string) (string, error) {
+	val, err := r.client.Get(ctx, key).Result()
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+func (r *RedisCacheAdapter) Set(ctx context.Context, key string, value string, expiration time.Duration) error {
+	return r.client.Set(ctx, key, value, expiration).Err()
+}
+
+func (r *RedisCacheAdapter) Del(ctx context.Context, keys ...string) error {
+	return r.client.Del(ctx, keys...).Err()
+}
+
+func (r *RedisCacheAdapter) HGet(ctx context.Context, key, field string) (string, error) {
+	val, err := r.client.HGet(ctx, key, field).Result()
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+func (r *RedisCacheAdapter) HSet(ctx context.Context, key string, values ...interface{}) error {
+	return r.client.HSet(ctx, key, values...).Err()
+}
+
+func (r *RedisCacheAdapter) Incr(ctx context.Context, key string) (int64, error) {
+	return r.client.Incr(ctx).Result()
+}

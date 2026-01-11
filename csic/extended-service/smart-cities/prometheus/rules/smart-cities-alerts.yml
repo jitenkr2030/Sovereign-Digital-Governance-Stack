@@ -1,0 +1,160 @@
+groups:
+  - name: smart-cities-traffic
+    rules:
+      - alert: HighTrafficCongestion
+        expr: traffic_congestion_level > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: traffic
+        annotations:
+          summary: "High traffic congestion detected"
+          description: "Traffic congestion at {{ $labels.node }} has exceeded 80% for the last 5 minutes."
+
+      - alert: TrafficIncidentActive
+        expr: traffic_incidents_active > 0
+        for: 1m
+        labels:
+          severity: info
+          service: traffic
+        annotations:
+          summary: "Active traffic incident"
+          description: "There are {{ $value }} active traffic incidents in the system."
+
+      - alert: TrafficLightOffline
+        expr: traffic_light_status != 1
+        for: 5m
+        labels:
+          severity: critical
+          service: traffic
+        annotations:
+          summary: "Traffic light offline"
+          description: "Traffic light {{ $labels.node_id }} has been offline for more than 5 minutes."
+
+  - name: smart-cities-emergency
+    rules:
+      - alert: HighPriorityIncident
+        expr: emergency_incidents_priority > 3
+        for: 1m
+        labels:
+          severity: critical
+          service: emergency
+        annotations:
+          summary: "High priority emergency incident"
+          description: "A priority {{ $value }} emergency incident requires immediate attention."
+
+      - alert: SlowEmergencyResponse
+        expr: emergency_response_time_seconds > 600
+        for: 10m
+        labels:
+          severity: warning
+          service: emergency
+        annotations:
+          summary: "Slow emergency response time"
+          description: "Average emergency response time has exceeded 10 minutes."
+
+      - alert: NoUnitsAvailable
+        expr: emergency_units_available == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: emergency
+        annotations:
+          summary: "No emergency units available"
+          description: "All emergency units are currently dispatched or unavailable."
+
+  - name: smart-cities-waste
+    rules:
+      - alert: WasteBinFull
+        expr: waste_bin_fill_level > 90
+        for: 1m
+        labels:
+          severity: warning
+          service: waste
+        annotations:
+          summary: "Waste bin nearly full"
+          description: "Waste bin {{ $labels.bin_id }} in zone {{ $labels.zone }} is {{ $value }}% full."
+
+      - alert: WasteBinOverflowing
+        expr: waste_bin_fill_level > 98
+        for: 10m
+        labels:
+          severity: critical
+          service: waste
+        annotations:
+          summary: "Waste bin overflowing"
+          description: "Waste bin {{ $labels.bin_id }} is critically full at {{ $value }}%."
+
+      - alert: LowBinBattery
+        expr: waste_bin_battery < 20
+        for: 1h
+        labels:
+          severity: warning
+          service: waste
+        annotations:
+          summary: "Low waste bin battery"
+          description: "Waste bin {{ $labels.bin_id }} has low battery ({{ $value }}%)."
+
+  - name: smart-cities-lighting
+    rules:
+      - alert: HighEnergyConsumption
+        expr: lighting_energy_consumption_kwh > 1000
+        for: 1h
+        labels:
+          severity: warning
+          service: lighting
+        annotations:
+          summary: "High lighting energy consumption"
+          description: "Lighting energy consumption has exceeded 1000 kWh in the last hour."
+
+      - alert: LightingFixtureFault
+        expr: lighting_fixture_status != "OPERATIONAL"
+        for: 30m
+        labels:
+          severity: warning
+          service: lighting
+        annotations:
+          summary: "Lighting fixture fault"
+          description: "Lighting fixture {{ $labels.fixture_id }} has status {{ $value }}."
+
+      - alert: LowLightingSavings
+        expr: lighting_savings_percent < 10
+        for: 24h
+        labels:
+          severity: info
+          service: lighting
+        annotations:
+          summary: "Low energy savings"
+          description: "Lighting energy savings have dropped below 10% for 24 hours."
+
+  - name: smart-cities-system
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: smart-cities
+        annotations:
+          summary: "High HTTP error rate"
+          description: "HTTP 5xx errors exceed 5% of total requests."
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: smart-cities
+        annotations:
+          summary: "High request latency"
+          description: "95th percentile request latency exceeds 2 seconds."
+
+      - alert: ServiceDown
+        expr: up{job="smart-cities"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: smart-cities
+        annotations:
+          summary: "Smart Cities service down"
+          description: "The Smart Cities service is not responding."

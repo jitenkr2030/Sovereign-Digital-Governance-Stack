@@ -1,0 +1,392 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-replication-config
+  namespace: registry
+  labels:
+    app: local-registry
+data:
+  config.yml: |
+    version: 0.1
+    log:
+      level: info
+      formatter: json
+    http:
+      addr: :5000
+    proxy:
+      remoteurl: https://registry-1.docker.io
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/registry
+      delete:
+        enabled: true
+    health:
+      storagedriver:
+        enabled: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-registry-mirror
+  namespace: registry
+  labels:
+    app: local-registry-mirror
+    tier: infrastructure
+  annotations:
+    description: "Local OCI registry with proxy/mirroring capabilities"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: local-registry-mirror
+  template:
+    metadata:
+      labels:
+        app: local-registry-mirror
+        tier: infrastructure
+    spec:
+      serviceAccountName: local-registry
+      terminationGracePeriodSeconds: 30
+      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      
+      containers:
+        - name: registry
+          image: docker.io/library/registry:2.8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: registry
+          env:
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: "https://registry-1.docker.io"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: "/var/lib/registry"
+            - name: REGISTRY_PROXY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: registry-mirror-credentials
+                  key: username
+            - name: REGISTRY_PROXY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: registry-mirror-credentials
+                  key: password
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+            - name: registry-config
+              mountPath: /etc/docker/registry
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: registry-pvc-mirror
+        - name: registry-config
+          configMap:
+            name: registry-replication-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-pvc-mirror
+  namespace: registry
+  labels:
+    app: local-registry-mirror
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-regional
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: registry-mirror-network-policy
+  namespace: registry
+  labels:
+    app: local-registry-mirror
+spec:
+  podSelector:
+    matchLabels:
+      app: local-registry-mirror
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-mirror-credentials
+  namespace: registry
+  type: Opaque
+stringData:
+  username: ""  # Leave empty for anonymous access
+  password: ""  # Leave empty for anonymous access
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: registry-image-sync
+  namespace: registry
+  labels:
+    app: local-registry
+spec:
+  schedule: "0 */4 * * *"  # Every 4 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: local-registry
+          containers:
+            - name: image-sync
+              image: docker.io/library/oras:1.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # Sync critical images to local registry
+                  # Images are pulled from public registries and pushed to local
+                  
+                  set -e
+                  
+                  LOCAL_REGISTRY="local-registry:5000"
+                  
+                  # List of critical images to sync
+                  IMAGES=(
+                    "docker.io/library/nginx:1.25-alpine"
+                    "docker.io/library/redis:7-alpine"
+                    "docker.io/library/postgres:15-alpine"
+                    "gcr.io/distroless/static:nonroot"
+                  )
+                  
+                  for IMAGE in "${IMAGES[@]}"; do
+                    echo "Syncing image: $IMAGE"
+                    
+                    # Pull image
+                    docker pull "$IMAGE"
+                    
+                    # Tag for local registry
+                    LOCAL_IMAGE="${LOCAL_REGISTRY}/${IMAGE#docker.io/}"
+                    docker tag "$IMAGE" "$LOCAL_IMAGE"
+                    
+                    # Push to local registry
+                    docker push "$LOCAL_IMAGE"
+                    
+                    # Remove local tag to save space
+                    docker rmi "$LOCAL_IMAGE"
+                    
+                    echo "Synced: $IMAGE"
+                  done
+                  
+                  echo "Image sync completed at $(date)"
+              env:
+                - name: DOCKER_CONFIG
+                  value: "/docker-config"
+              volumeMounts:
+                - name: docker-config
+                  secret:
+                    secretName: registry-mirror-credentials
+                    items:
+                      - key: .dockerconfigjson
+                        path: .docker/config.json
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "1Gi"
+                limits:
+                  cpu: "2000m"
+                  memory: "4Gi"
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: registry-gc
+  namespace: registry
+  labels:
+    app: local-registry
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: local-registry
+          containers:
+            - name: registry-gc
+              image: docker.io/library/curl:3.9
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # Run garbage collection on registry
+                  # This removes unused blobs and manifests
+                  
+                  REGISTRY_URL="http://local-registry:5000"
+                  AUTH_HEADER=$(cat /auth/basic-auth | tr -d '\n')
+                  
+                  # Trigger garbage collection
+                  curl -X POST \
+                    -H "Authorization: Basic $AUTH_HEADER" \
+                    "${REGISTRY_URL}/v2/_oci/artifacts/delete"
+                  
+                  echo "Garbage collection completed at $(date)"
+              volumeMounts:
+                - name: auth
+                  secret:
+                    secretName: registry-htpasswd
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "256Mi"
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-sync-manifest
+  namespace: registry
+  labels:
+    app: local-registry
+data:
+  sync-manifest.yaml: |
+    # Registry sync manifest
+    # Defines images to sync from public registries to local registry
+    
+    sync:
+      # Frequency: always, hourly, daily, weekly
+      frequency: daily
+      
+      # Images to sync
+      images:
+        # Core infrastructure
+        - source: "docker.io/library/nginx:1.25-alpine"
+          target: "local-registry:5000/nginx:1.25-alpine"
+          platform: "linux/amd64"
+          
+        - source: "docker.io/library/redis:7-alpine"
+          target: "local-registry:5000/redis:7-alpine"
+          platform: "linux/amd64"
+          
+        - source: "docker.io/library/postgres:15-alpine"
+          target: "local-registry:5000/postgres:15-alpine"
+          platform: "linux/amd64"
+          
+        # Kubernetes components
+        - source: "k8s.gcr.io/kube-apiserver:v1.28.0"
+          target: "local-registry:5000/kube-apiserver:v1.28.0"
+          platform: "linux/amd64"
+          
+        - source: "k8s.gcr.io/kube-controller-manager:v1.28.0"
+          target: "local-registry:5000/kube-controller-manager:v1.28.0"
+          platform: "linux/amd64"
+          
+        - source: "k8s.gcr.io/kube-scheduler:v1.28.0"
+          target: "local-registry:5000/kube-scheduler:v1.28.0"
+          platform: "linux/amd64"
+          
+        - source: "k8s.gcr.io/kube-proxy:v1.28.0"
+          target: "local-registry:5000/kube-proxy:v1.28.0"
+          platform: "linux/amd64"
+          
+        # Istio
+        - source: "docker.io/istio/pilot:1.19.0"
+          target: "local-registry:5000/istio/pilot:1.19.0"
+          platform: "linux/amd64"
+          
+        - source: "docker.io/istio/proxyv2:1.19.0"
+          target: "local-registry:5000/istio/proxyv2:1.19.0"
+          platform: "linux/amd64"
+          
+        # SPIRE
+        - source: "gcr.io/spiffe-io/spire-server:1.8.0"
+          target: "local-registry:5000/spiffe-io/spire-server:1.8.0"
+          platform: "linux/amd64"
+          
+        - source: "gcr.io/spiffe-io/spire-agent:1.8.0"
+          target: "local-registry:5000/spiffe-io/spire-agent:1.8.0"
+          platform: "linux/amd64"
+          
+        # Monitoring
+        - source: "docker.io/prom/prometheus:v2.47.0"
+          target: "local-registry:5000/prom/prometheus:v2.47.0"
+          platform: "linux/amd64"
+          
+        - source: "docker.io/grafana/grafana:10.2.0"
+          target: "local-registry:5000/grafana/grafano:10.2.0"
+          platform: "linux/amd64"
+          
+        # Security
+        - source: "gcr.io/distroless/static:nonroot"
+          target: "local-registry:5000/distroless/static:nonroot"
+          platform: "linux/amd64"
+          
+      # Policies
+      policies:
+        # Keep last N versions of each image
+        keep_versions: 3
+        
+        # Delete images older than
+        max_age: 720h  # 30 days
+        
+        # Sync on demand only
+        on_demand: true

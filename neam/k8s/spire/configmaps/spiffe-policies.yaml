@@ -1,0 +1,294 @@
+# SPIFFE ID Issuance Policies - Workload Registration
+# These policies define how SPIFFE IDs are assigned to workloads
+# based on Kubernetes attributes and security requirements.
+
+---
+# Default Workload Policy - All neam-platform services
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: neam-platform-default-workloads
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  # Namespace selector - applies to all secured namespaces
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  
+  # Pod selector - targets all workloads in selected namespaces
+  podSelector:
+    matchLabels:
+      spiffe.io/workload: "true"
+  
+  # Additional DNS names for the SVID
+  dnsNamePatterns:
+    - "*.neam-platform.svc.cluster.local"
+    - "*.neam-platform"
+  
+  # Downstream federated identity (for Istio integration)
+  downstreamCluster: false
+  
+  # CA constraints
+  caConstraints:
+    allowIssuingAsIntermediateCA: false
+    allowAnySubordinateCA: false
+---
+# Dashboard Service Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: dashboard-workload
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  parentId: "spiffe://neam-platform.gov/ns/neam-platform/sa/dashboard-sa"
+  
+  namespaceSelector:
+    matchLabels:
+      app: dashboard
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      app: dashboard
+  
+  dnsNamePatterns:
+    - "dashboard.neam-platform.svc.cluster.local"
+    - "dashboard.neam-platform"
+  
+  downstreamCluster: false
+---
+# API Gateway Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: api-gateway-workload
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  parentId: "spiffe://neam-platform.gov/ns/gateway/sa/api-gateway-sa"
+  
+  namespaceSelector:
+    matchLabels:
+      app: api-gateway
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  
+  dnsNamePatterns:
+    - "api-gateway.neam-platform.svc.cluster.local"
+    - "api-gateway.neam-platform"
+  
+  downstreamCluster: false
+---
+# Intelligence Service Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: intelligence-workload
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      app: intelligence
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      app: intelligence
+  
+  dnsNamePatterns:
+    - "intelligence.neam-platform.svc.cluster.local"
+    - "intelligence.neam-platform"
+  
+  # Restricted workload - requires additional authorization
+  downstreamCluster: false
+---
+# Intervention Service Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: intervention-workload
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      app: intervention
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      app: intervention
+  
+  dnsNamePatterns:
+    - "intervention.neam-platform.svc.cluster.local"
+    - "intervention.neam-platform"
+---
+# Reporting Service Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: reporting-workload
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      app: reporting
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      app: reporting
+  
+  dnsNamePatterns:
+    - "reporting.neam-platform.svc.cluster.local"
+    - "reporting.neam-platform"
+---
+# Database Services Policy (Read-Write Access)
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: database-workloads
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      tier: database
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      tier: database
+  
+  dnsNamePatterns:
+    - "*.database.neam-platform.svc.cluster.local"
+    - "*.database.neam-platform"
+  
+  # Database workloads have specific certificate requirements
+  downstreamCluster: false
+---
+# Monitoring Services Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: monitoring-workloads
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      tier: monitoring
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      tier: monitoring
+  
+  dnsNamePatterns:
+    - "prometheus.neam-platform.svc.cluster.local"
+    - "grafana.neam-platform.svc.cluster.local"
+---
+# Istio Sidecar Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: istio-mesh-workloads
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  # Parent ID for Istio control plane
+  parentId: "spiffe://neam-platform.gov/ns/istio-system/sa/istio-service-mesh"
+  
+  namespaceSelector:
+    matchLabels:
+      istio-injection: "enabled"
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      istio.io/dataplane-mode: "sidecar"
+  
+  dnsNamePatterns:
+    - "*.local"
+  
+  # Allow Istio to issue child identities
+  downstreamCluster: true
+  
+  # Istio requires specific CA constraints
+  caConstraints:
+    allowIssuingAsIntermediateCA: true
+    allowAnySubordinateCA: false
+---
+# Batch Jobs Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: batch-jobs
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      batch.kubernetes.io/job-name: "*"
+  
+  # Short-lived certificates for batch jobs
+  # TTL will be overridden by job-specific configuration
+  downstreamCluster: false
+---
+# Cron Jobs Policy
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: cron-jobs
+  namespace: spire-system
+spec:
+  SPIFFEIDDomain: "neam-platform.gov"
+  
+  namespaceSelector:
+    matchLabels:
+      neam-platform/security: "enabled"
+  
+  podSelector:
+    matchLabels:
+      batch.kubernetes.io/cron-job: "*"
+  
+  downstreamCluster: false
+---
+# Federation Policy (Cross-Cluster Trust)
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterFederatedTrustDomain
+metadata:
+  name: neam-platform-federation
+  namespace: spire-system
+spec:
+  trustDomain: "neam-platform.gov"
+  
+  bundleEndpoint:
+    # Endpoint for trust bundle distribution
+    url: "https://bundle.neam-platform.gov"
+    # Use HTTPS with mutual TLS
+    useWebPKI: false
+    
+  # Federated trust domains (for multi-cluster)
+  federatedBundles:
+    - bundleEndpointURL: "https://partner.trust-domain.org"
+      trustDomain: "partner.trust-domain.org"

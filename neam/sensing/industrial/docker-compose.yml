@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  industrial-adapter:
+    build:
+      context: ./industrial
+      dockerfile: Dockerfile
+    image: neam/industrial-adapter:latest
+    container_name: industrial-adapter
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+      - "9093:9093"
+    environment:
+      - CONFIG_PATH=/etc/neam/config.yaml
+      - KAFKA_BROKERS=kafka:9092
+      - OPCUA_ENDPOINT_URL=opc.tcp://plc01.local:4840
+      - OPCUA_APPLICATION_URI=urn:neam:industrial:adapter
+      - OPCUA_PRODUCT_URI=urn:neam:industrial:adapter
+      - OPCUA_SECURITY_POLICY=Basic256Sha256
+      - OPCUA_SECURITY_MODE=SignAndEncrypt
+      - OPCUA_AUTH_MODE=UserName
+      - OPCUA_USERNAME=adapter_user
+      - OPCUA_PASSWORD=${OPCUA_PASSWORD:-}
+      - OPCUA_ENDPOINT_URL_2=opc.tcp://plc02.local:4840
+      - OPCUA_APPLICATION_URI_2=urn:neam:industrial:adapter2
+    volumes:
+      - ./industrial/config.yaml:/etc/neam/config.yaml:ro
+      - ./industrial/certs:/etc/neam/certs:ro
+      - industrial-logs:/var/log/neam
+    depends_on:
+      - kafka
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9093/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  industrial-adapter-dashboard:
+    image: grafana/grafana:latest
+    container_name: industrial-adapter-dashboard
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./industrial/deployments/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - neam-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  industrial-logs:
+  grafana-storage:
+
+networks:
+  neam-network:
+    driver: bridge

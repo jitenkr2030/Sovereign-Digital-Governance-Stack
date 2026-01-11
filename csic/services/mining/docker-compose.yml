@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  mining-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mining-control-platform
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=csic_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CONFIG_PATH=/etc/mining-api/config.yaml
+    volumes:
+      - ./config.yaml:/etc/mining-api/config.yaml:ro
+      - mining-logs:/var/log/mining-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: mining-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: csic_platform
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mining-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - csic-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  csic-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  mining-logs:

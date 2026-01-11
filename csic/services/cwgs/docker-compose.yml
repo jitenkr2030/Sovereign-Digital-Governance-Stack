@@ -1,0 +1,251 @@
+version: '3.8'
+
+services:
+  # Custodial Wallet Governance Service
+  cwgs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-cwgs
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+      - "50052:50052"
+      - "9090:9090"
+    environment:
+      - CWGS_APP_ENVIRONMENT=development
+      - CWGS_APP_HTTP_PORT=8081
+      - CWGS_APP_GRPC_PORT=50052
+      - CWGS_DATABASE_HOST=postgres
+      - CWGS_DATABASE_PORT=5432
+      - CWGS_DATABASE_NAME=cwgs
+      - CWGS_REDIS_HOST=redis
+      - CWGS_REDIS_PORT=6379
+      - CWGS_KAFKA_BROKERS=kafka:9092
+      - CWGS_LOGGING_LEVEL=info
+      - CWGS_HSM_PROVIDER=soft
+      - CWGS_SOFT_HSM_LIBRARY_PATH=/usr/lib/softhsm/libsofthsm2.so
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    volumes:
+      - ./config:/app/config:ro
+      - cwgs_data:/app/data
+      - cwgs_logs:/app/logs
+      - softhsm_data:/var/lib/softhsm/tokens
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # PostgreSQL Database for wallet governance
+  postgres:
+    image: postgres:15-alpine
+    container_name: csic-cwgs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: csic_admin
+      POSTGRES_PASSWORD: secure_password_change_in_production
+      POSTGRES_DB: cwgs
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csic_admin -d cwgs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: csic-cwgs-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Apache Kafka for event streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-cwgs-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-cwgs-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # SoftHSM for key management (development)
+  softhsm:
+    image: softhsm/softhsm:2.6
+    container_name: csic-cwgs-softhsm
+    restart: unless-stopped
+    volumes:
+      - softhsm_data:/var/lib/softhsm/tokens
+      - softhsm_config:/etc/softhsm
+    command: >
+      bash -c "
+        softhsm2-util --init-token --slot 0 --label 'CSIC CWGS Token' --pin 12345678 --so-pin 1234567890;
+        cat /var/lib/softhsm/tokens/*/public.txt;
+      "
+    networks:
+      - csic-network
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: csic-cwgs-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-cwgs-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+# Volumes for persistent data
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  kafka_data:
+    driver: local
+  softhsm_data:
+    driver: local
+  softhsm_config:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  cwgs_data:
+    driver: local
+  cwgs_logs:
+    driver: local
+
+# Networks
+networks:
+  csic-network:
+    driver: bridge

@@ -1,0 +1,283 @@
+version: '3.8'
+
+services:
+  # Exchange Oversight Service
+  oversight:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csic-oversight
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      - CSIC_OVERSIGHT_ENVIRONMENT=development
+      - CSIC_OVERSIGHT_SERVER_HTTP_PORT=8080
+      - CSIC_OVERSIGHT_SERVER_GRPC_PORT=50051
+      - CSIC_OVERSIGHT_POSTGRES_HOST=postgres
+      - CSIC_OVERSIGHT_POSTGRES_PORT=5432
+      - CSIC_OVERSIGHT_POSTGRES_DATABASE=csic_oversight
+      - CSIC_OVERSIGHT_REDIS_ADDR=redis:6379
+      - CSIC_OVERSIGHT_KAFKA_BROKERS=kafka:9092
+      - CSIC_OVERSIGHT_KAFKA_TRADE_TOPIC=market.trades.raw
+      - CSIC_OVERSIGHT_KAFKA_ALERT_TOPIC=risk.alerts
+      - CSIC_OVERSIGHT_KAFKA_THROTTLE_TOPIC=control.commands
+      - CSIC_OVERSIGHT_OPENSEARCH_ADDRESSES=http://opensearch:9200
+      - CSIC_OVERSIGHT_LOGGING_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: csic-oversight-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: csic_admin
+      POSTGRES_PASSWORD: secure_password_change_in_production
+      POSTGRES_DB: csic_oversight
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csic_admin -d csic_oversight"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: csic-oversight-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Apache Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: csic-oversight-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Zookeeper (required for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: csic-oversight-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # OpenSearch
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: csic-oversight-opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - http.host=0.0.0.0
+      - http.port=9200
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=admin  # Change in production
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # OpenSearch Dashboards (optional visualization)
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: csic-oversight-dashboards
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=http://opensearch:9200
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Prometheus (metrics collection)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: csic-oversight-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Grafana (metrics visualization)
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: csic-oversight-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - csic-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+# Volumes for persistent data
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  kafka_data:
+    driver: local
+  opensearch_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# Networks
+networks:
+  csic-network:
+    driver: bridge
