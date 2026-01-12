@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <filter id="shadow-layer" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+    <linearGradient id="grad-top" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366F1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4F46E5;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad-logic" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891B2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad-data" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#64748B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#475569;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad-base" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1E293B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0F172A;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="1000" fill="#F8FAFC"/>
+
+  <!-- Title -->
+  <text x="400" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="700" fill="#0F172A" text-anchor="middle">THE GOVERNANCE STACK</text>
+  <text x="400" y="72" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#64748B" text-anchor="middle">Layered Architecture for National Resilience Infrastructure</text>
+
+  <!-- Side Bracket: Compliance Mapping -->
+  <g transform="translate(70, 120)">
+    <path d="M 0 0 L 15 0 L 15 750 L 0 750" fill="none" stroke="#475569" stroke-width="2"/>
+    <path d="M 0 0 L 10 0 M 0 750 L 10 750" stroke="#475569" stroke-width="2"/>
+    <text x="5" y="385" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#475569" text-anchor="middle" transform="rotate(-90, 5, 385)">COMPLIANCE MAPPING</text>
+  </g>
+
+  <!-- Layer 4: Sovereign Infrastructure (Base) -->
+  <g transform="translate(100, 780)">
+    <rect x="0" y="0" width="600" height="90" rx="8" fill="url(#grad-base)" filter="url(#shadow-layer)"/>
+    <text x="300" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">SOVEREIGN INFRASTRUCTURE</text>
+    <text x="300" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94A3B8" text-anchor="middle">Hardware & Physical Assets</text>
+
+    <!-- Infrastructure Components -->
+    <rect x="20" y="60" width="130" height="20" rx="3" fill="#334155"/>
+    <text x="85" y="74" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#E2E8F0">Kubernetes Clusters</text>
+
+    <rect x="165" y="60" width="130" height="20" rx="3" fill="#334155"/>
+    <text x="230" y="74" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#E2E8F0">Database Servers</text>
+
+    <rect x="310" y="60" width="130" height="20" rx="3" fill="#334155"/>
+    <text x="375" y="74" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#E2E8F0">Network Infrastructure</text>
+
+    <rect x="455" y="60" width="125" height="20" rx="3" fill="#334155"/>
+    <text x="517" y="74" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#E2E8F0">HSM Hardware</text>
+  </g>
+
+  <!-- Layer 3: Security & Data -->
+  <g transform="translate(100, 660)">
+    <rect x="0" y="0" width="600" height="110" rx="8" fill="url(#grad-data)" filter="url(#shadow-layer)"/>
+    <text x="300" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">SECURITY & DATA LAYER</text>
+    <text x="300" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#CBD5E1" text-anchor="middle">Protection, Classification & Auditing</text>
+
+    <!-- Components Grid -->
+    <rect x="20" y="65" width="135" height="35" rx="4" fill="#475569"/>
+    <text x="87" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="middle">Data Classification</text>
+
+    <rect x="170" y="65" width="135" height="35" rx="4" fill="#475569"/>
+    <text x="237" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="middle">Audit Framework</text>
+
+    <rect x="320" y="65" width="135" height="35" rx="4" fill="#475569"/>
+    <text x="387" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="middle">Encryption</text>
+
+    <rect x="470" y="65" width="110" height="35" rx="4" fill="#475569"/>
+    <text x="525" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="middle">Access Control</text>
+
+    <!-- Sub-row -->
+    <rect x="20" y="70" width="135" height="30" rx="4" fill="#334155" opacity="0.5"/>
+    <text x="87" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">Public / Internal / Confidential</text>
+
+    <rect x="170" y="70" width="135" height="30" rx="4" fill="#334155" opacity="0.5"/>
+    <text x="237" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">Immutable Log Trails</text>
+
+    <rect x="320" y="70" width="135" height="30" rx="4" fill="#334155" opacity="0.5"/>
+    <text x="387" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">E2E & At-Rest</text>
+
+    <rect x="470" y="70" width="110" height="30" rx="4" fill="#334155" opacity="0.5"/>
+    <text x="525" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">RBAC / ABAC</text>
+  </g>
+
+  <!-- Layer 2: Protocol & Logic -->
+  <g transform="translate(100, 510)">
+    <rect x="0" y="0" width="600" height="140" rx="8" fill="url(#grad-logic)" filter="url(#shadow-layer)"/>
+    <text x="300" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">PROTOCOL & LOGIC LAYER</text>
+    <text x="300" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#CFFAFE" text-anchor="middle">Smart Contracts, Governance Rules & Signal Processing</text>
+
+    <!-- Smart Contracts Section -->
+    <rect x="20" y="65" width="175" height="65" rx="6" fill="#0891B2"/>
+    <text x="107" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">Smart Contracts</text>
+    <rect x="30" y="100" width="155" height="22" rx="3" fill="#22D3EE" opacity="0.3"/>
+    <text x="107" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#ECFEFF">VASP Licensing</text>
+
+    <!-- Governance Rules Section -->
+    <rect x="212" y="65" width="175" height="65" rx="6" fill="#0891B2"/>
+    <text x="300" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">Governance Rules</text>
+    <rect x="222" y="100" width="155" height="22" rx="3" fill="#22D3EE" opacity="0.3"/>
+    <text x="300" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#ECFEFF">Policy Engine</text>
+
+    <!-- Signal Processing Section -->
+    <rect x="405" y="65" width="175" height="65" rx="6" fill="#0891B2"/>
+    <text x="492" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">Signal Processing</text>
+    <rect x="415" y="100" width="155" height="22" rx="3" fill="#22D3EE" opacity="0.3"/>
+    <text x="492" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#ECFEFF">Risk Evaluation</text>
+
+    <!-- Sub-components -->
+    <g transform="translate(20, 75)">
+      <rect x="0" y="0" width="175" height="65" rx="6" fill="none" stroke="#22D3EE" stroke-width="1" opacity="0.5"/>
+      <rect x="100" y="15" width="60" height="35" rx="3" fill="#0891B2"/>
+      <text x="130" y="37" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Compliance</text>
+      <text x="130" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Logic</text>
+    </g>
+
+    <g transform="translate(212, 75)">
+      <rect x="0" y="0" width="175" height="65" rx="6" fill="none" stroke="#22D3EE" stroke-width="1" opacity="0.5"/>
+      <rect x="15" y="15" width="55" height="35" rx="3" fill="#0891B2"/>
+      <text x="42" y="37" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Policy</text>
+      <text x="42" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Rules</text>
+      <rect x="85" y="15" width="55" height="35" rx="3" fill="#0891B2"/>
+      <text x="112" y="37" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Decision</text>
+      <text x="112" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Engine</text>
+    </g>
+
+    <g transform="translate(405, 75)">
+      <rect x="0" y="0" width="175" height="65" rx="6" fill="none" stroke="#22D3EE" stroke-width="1" opacity="0.5"/>
+      <rect x="15" y="15" width="145" height="35" rx="3" fill="#0891B2"/>
+      <text x="87" y="37" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#FFFFFF">Signal Contract Validation</text>
+    </g>
+  </g>
+
+  <!-- Layer 1: Application Layer (Top) -->
+  <g transform="translate(100, 120)">
+    <rect x="0" y="0" width="600" height="380" rx="8" fill="url(#grad-top)" filter="url(#shadow-layer)"/>
+    <text x="300" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">APPLICATION LAYER</text>
+    <text x="300" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#C7D2FE" text-anchor="middle">User Interfaces & Operational Dashboards</text>
+
+    <!-- CSIC Applications -->
+    <g transform="translate(20, 70)">
+      <rect x="0" y="0" width="270" height="140" rx="8" fill="#4F46E5" opacity="0.8"/>
+      <text x="135" y="25" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">CSIC Applications</text>
+
+      <!-- App 1 -->
+      <rect x="15" y="40" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="70" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Regulator Dashboard</text>
+
+      <!-- App 2 -->
+      <rect x="140" y="40" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="195" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Admin Console</text>
+
+      <!-- App 3 -->
+      <rect x="15" y="90" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="70" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Compliance Portal</text>
+
+      <!-- App 4 -->
+      <rect x="140" y="90" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="195" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Licensing System</text>
+    </g>
+
+    <!-- NEAM Applications -->
+    <g transform="translate(310, 70)">
+      <rect x="0" y="0" width="270" height="140" rx="8" fill="#4F46E5" opacity="0.8"/>
+      <text x="135" y="25" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">NEAM Applications</text>
+
+      <!-- App 1 -->
+      <rect x="15" y="40" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="70" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">National Dashboard</text>
+
+      <!-- App 2 -->
+      <rect x="140" y="40" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="195" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Crisis Console</text>
+
+      <!-- App 3 -->
+      <rect x="15" y="90" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="70" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Intelligence Reports</text>
+
+      <!-- App 4 -->
+      <rect x="140" y="90" width="110" height="40" rx="4" fill="#6366F1"/>
+      <text x="195" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle">Intervention Panel</text>
+    </g>
+
+    <!-- Shared Services -->
+    <g transform="translate(20, 225)">
+      <rect x="0" y="0" width="560" height="80" rx="8" fill="#4338CA" opacity="0.6"/>
+      <text x="280" y="25" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#FFFFFF" text-anchor="middle">Shared Services & APIs</text>
+
+      <rect x="20" y="40" width="100" height="30" rx="4" fill="#6366F1"/>
+      <text x="70" y="60" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#FFFFFF" text-anchor="middle">REST API</text>
+
+      <rect x="135" y="40" width="100" height="30" rx="4" fill="#6366F1"/>
+      <text x="185" y="60" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#FFFFFF" text-anchor="middle">GraphQL</text>
+
+      <rect x="250" y="40" width="100" height="30" rx="4" fill="#6366F1"/>
+      <text x="300" y="60" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#FFFFFF" text-anchor="middle">gRPC</text>
+
+      <rect x="365" y="40" width="100" height="30" rx="4" fill="#6366F1"/>
+      <text x="415" y="60" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#FFFFFF" text-anchor="middle">WebSocket</text>
+
+      <rect x="480" y="40" width="60" height="30" rx="4" fill="#6366F1"/>
+      <text x="510" y="60" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#FFFFFF" text-anchor="middle">Auth</text>
+    </g>
+
+    <!-- Reporting & Analytics -->
+    <g transform="translate(20, 320)">
+      <rect x="0" y="0" width="560" height="50" rx="6" fill="#3730A3" opacity="0.5"/>
+      <text x="280" y="30" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">Reporting & Analytics Engine</text>
+    </g>
+  </g>
+
+  <!-- Vertical Guidelines -->
+  <line x1="250" y1="120" x2="250" y2="870" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="400" y1="120" x2="400" y2="870" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="550" y1="120" x2="550" y2="870" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Layer Connectivity Indicators -->
+  <g transform="translate(700, 130)">
+    <rect x="0" y="0" width="50" height="25" rx="4" fill="#F1F5F9" stroke="#E2E8F0"/>
+    <text x="25" y="17" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#64748B" text-anchor="middle">APIs</text>
+  </g>
+
+  <!-- Bottom Legend -->
+  <g transform="translate(100, 920)">
+    <rect x="0" y="0" width="600" height="55" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="300" y="20" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#334155" text-anchor="middle">Compliance & Governance Standards</text>
+
+    <rect x="20" y="30" width="95" height="18" rx="3" fill="#DCFCE7" stroke="#86EFAC"/>
+    <text x="67" y="43" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#166534">GDPR Ready</text>
+
+    <rect x="125" y="30" width="95" height="18" rx="3" fill="#DBEAFE" stroke="#93C5FD"/>
+    <text x="172" y="43" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#1E40AF">ISO 27001</text>
+
+    <rect x="230" y="30" width="95" height="18" rx="3" fill="#FEF3C7" stroke="#FCD34D"/>
+    <text x="277" y="43" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#92400E">SOC 2</text>
+
+    <rect x="335" y="30" width="95" height="18" rx="3" fill="#FEE2E2" stroke="#FCA5A5"/>
+    <text x="382" y="43" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#991B1B">FinTech Standards</text>
+
+    <rect x="440" y="30" width="140" height="18" rx="3" fill="#F3E8FF" stroke="#D8B4FE"/>
+    <text x="510" y="43" font-family="system-ui, -apple-system, sans-serif" font-size="8" fill="#6B21A8">National Resilience Framework</text>
+  </g>
+</svg>
